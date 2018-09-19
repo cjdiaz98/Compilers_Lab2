@@ -1,0 +1,128 @@
+// --- start of allocated code
+	loadI 1		=> r0	//  => vr5  <remat>
+	lshift r0, r0	=> r2	// vr5, vr5 => vr38
+	lshift r2, r0	=> r3	// vr38, vr5 => vr36
+	lshift r3, r0	=> r1	// vr36, vr5 => vr37
+	loadI 32768	=> r4	// spilling pr3 (vr36)
+	store r3	=> r4	// spilling pr3 (vr36)
+	lshift r1, r0	=> r3	// vr37, vr5 => vr7
+	loadI 32772	=> r4	// spilling pr3 (vr7)
+	store r3	=> r4	// spilling pr3 (vr7)
+	lshift r3, r0	=> r3	// vr7, vr5 => vr35
+	loadI 32776	=> r4	// spilling pr3 (vr35)
+	store r3	=> r4	// spilling pr3 (vr35)
+	lshift r3, r0	=> r3	// vr35, vr5 => vr33
+	loadI 32780	=> r4	// spilling pr3 (vr33)
+	store r3	=> r4	// spilling pr3 (vr33)
+	lshift r3, r0	=> r3	// vr33, vr5 => vr34
+	loadI 32784	=> r4	// spilling pr3 (vr34)
+	store r3	=> r4	// spilling pr3 (vr34)
+	lshift r3, r0	=> r3	// vr34, vr5 => vr31
+	loadI 32788	=> r4	// spilling pr3 (vr31)
+	store r3	=> r4	// spilling pr3 (vr31)
+	lshift r3, r0	=> r3	// vr31, vr5 => vr32
+	loadI 32792	=> r4	// spilling pr3 (vr32)
+	store r3	=> r4	// spilling pr3 (vr32)
+	lshift r3, r0	=> r3	// vr32, vr5 => vr29
+	loadI 32796	=> r4	// spilling pr3 (vr29)
+	store r3	=> r4	// spilling pr3 (vr29)
+	lshift r3, r0	=> r3	// vr29, vr5 => vr30
+	loadI 32800	=> r4	// spilling pr3 (vr30)
+	store r3	=> r4	// spilling pr3 (vr30)
+	lshift r3, r0	=> r3	// vr30, vr5 => vr27
+	loadI 32804	=> r4	// spilling pr3 (vr27)
+	store r3	=> r4	// spilling pr3 (vr27)
+	lshift r3, r0	=> r3	// vr27, vr5 => vr28
+	loadI 32808	=> r4	// spilling pr3 (vr28)
+	store r3	=> r4	// spilling pr3 (vr28)
+	lshift r3, r0	=> r3	// vr28, vr5 => vr25
+	loadI 32812	=> r4	// spilling pr3 (vr25)
+	store r3	=> r4	// spilling pr3 (vr25)
+	lshift r3, r0	=> r3	// vr25, vr5 => vr26
+	lshift r3, r0	=> r0	// vr26, vr5 => vr10
+	loadI 32816	=> r4	// spilling pr0 (vr10)
+	store r0	=> r4	// spilling pr0 (vr10)
+	loadI 1		=> r0	// rematerialized
+	add r0, r2	=> r2	// vr5, vr38 => vr23
+	loadI 32768	=> r0	// restoring vr36 => pr0
+	load r0		=> r0	// restoring vr36 => pr0
+	add r0, r1	=> r0	// vr36, vr37 => vr24
+	loadI 32772	=> r1	// restoring vr7 => pr1
+	load r1		=> r1	// restoring vr7 => pr1
+	loadI 32820	=> r4	// spilling pr2 (vr23)
+	store r2	=> r4	// spilling pr2 (vr23)
+	loadI 32776	=> r2	// restoring vr35 => pr2
+	load r2		=> r2	// restoring vr35 => pr2
+	add r1, r2	=> r2	// vr7, vr35 => vr21
+	loadI 32780	=> r1	// restoring vr33 => pr1
+	load r1		=> r1	// restoring vr33 => pr1
+	loadI 32824	=> r4	// spilling pr2 (vr21)
+	store r2	=> r4	// spilling pr2 (vr21)
+	loadI 32784	=> r2	// restoring vr34 => pr2
+	load r2		=> r2	// restoring vr34 => pr2
+	add r1, r2	=> r1	// vr33, vr34 => vr22
+	loadI 32788	=> r2	// restoring vr31 => pr2
+	load r2		=> r2	// restoring vr31 => pr2
+	loadI 32828	=> r4	// spilling pr1 (vr22)
+	store r1	=> r4	// spilling pr1 (vr22)
+	loadI 32792	=> r1	// restoring vr32 => pr1
+	load r1		=> r1	// restoring vr32 => pr1
+	add r2, r1	=> r2	// vr31, vr32 => vr19
+	loadI 32796	=> r1	// restoring vr29 => pr1
+	load r1		=> r1	// restoring vr29 => pr1
+	loadI 32832	=> r4	// spilling pr2 (vr19)
+	store r2	=> r4	// spilling pr2 (vr19)
+	loadI 32800	=> r2	// restoring vr30 => pr2
+	load r2		=> r2	// restoring vr30 => pr2
+	add r1, r2	=> r1	// vr29, vr30 => vr20
+	loadI 32804	=> r2	// restoring vr27 => pr2
+	load r2		=> r2	// restoring vr27 => pr2
+	loadI 32836	=> r4	// spilling pr1 (vr20)
+	store r1	=> r4	// spilling pr1 (vr20)
+	loadI 32808	=> r1	// restoring vr28 => pr1
+	load r1		=> r1	// restoring vr28 => pr1
+	add r2, r1	=> r2	// vr27, vr28 => vr17
+	loadI 32812	=> r1	// restoring vr25 => pr1
+	load r1		=> r1	// restoring vr25 => pr1
+	add r1, r3	=> r1	// vr25, vr26 => vr18
+	loadI 32820	=> r3	// restoring vr23 => pr3
+	load r3		=> r3	// restoring vr23 => pr3
+	add r3, r0	=> r3	// vr23, vr24 => vr15
+	loadI 32824	=> r0	// restoring vr21 => pr0
+	load r0		=> r0	// restoring vr21 => pr0
+	loadI 32840	=> r4	// spilling pr3 (vr15)
+	store r3	=> r4	// spilling pr3 (vr15)
+	loadI 32828	=> r3	// restoring vr22 => pr3
+	load r3		=> r3	// restoring vr22 => pr3
+	add r0, r3	=> r0	// vr21, vr22 => vr16
+	loadI 32832	=> r3	// restoring vr19 => pr3
+	load r3		=> r3	// restoring vr19 => pr3
+	loadI 32844	=> r4	// spilling pr0 (vr16)
+	store r0	=> r4	// spilling pr0 (vr16)
+	loadI 32836	=> r0	// restoring vr20 => pr0
+	load r0		=> r0	// restoring vr20 => pr0
+	add r3, r0	=> r3	// vr19, vr20 => vr13
+	add r2, r1	=> r2	// vr17, vr18 => vr14
+	loadI 32840	=> r0	// restoring vr15 => pr0
+	load r0		=> r0	// restoring vr15 => pr0
+	loadI 32844	=> r1	// restoring vr16 => pr1
+	load r1		=> r1	// restoring vr16 => pr1
+	add r0, r1	=> r0	// vr15, vr16 => vr12
+	add r3, r2	=> r3	// vr13, vr14 => vr11
+	add r3, r0	=> r3	// vr11, vr12 => vr9
+	loadI 32816	=> r0	// restoring vr10 => pr0
+	load r0		=> r0	// restoring vr10 => pr0
+	add r3, r0	=> r3	// vr9, vr10 => vr8
+	loadI 1024	=> r0	// rematerialized
+	store r3	=> r0	// vr8 => vr2
+	loadI 32772	=> r1	// restoring vr7 => pr1
+	load r1		=> r1	// restoring vr7 => pr1
+	loadI 1		=> r2	// rematerialized
+	add r1, r2	=> r1	// vr7, vr5 => vr6
+	lshift r2, r1	=> r1	// vr5, vr6 => vr4
+	sub r1, r2	=> r1	// vr4, vr5 => vr1
+	loadI 4		=> r2	//  => vr3  <remat>
+	add r0, r2	=> r0	// vr2, vr3 => vr0
+	store r1	=> r0	// vr1 => vr0
+	output 1024		// 
+	output 1028		// 

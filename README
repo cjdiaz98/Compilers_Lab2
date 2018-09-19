@@ -1,0 +1,33 @@
+//NAME: Christian Jacob Diaz
+//NETID: cjd8
+My program can be invoked with a command that looks something like:
+bash lab1.sh [-h|-s|-p|-r] <filename>
+
+Note: only enter one of the flags at any given time. 
+If you enter the -h flag then the program will only print out a statement
+detailing how to invoke the program, then quit. 
+I added two more flags, -v and -d.
+flag -d will take the name of a directory. It also must be 
+given in combination with one of the original flags
+and run the program on every file in the directory. 
+flag -v will run the program in verbose mode, and was intended for my usage
+to debug. It can be run in combination with flag -d and any of the other flags
+
+When running the program with the flag -p, if our program encounters any 
+syntactical errors then it will check if the line has the right number of tokens. 
+If it doesn't then it'll state just that. If the line has the right number of tokens, 
+but the wrong types of tokens following the operation, then we report that.  
+If the line doesn't start with a valid operation code, then we merely say so.
+
+Regarding how my program runs with the -s flag:
+The way that my program recognizes lexical errors is that if it encounters any
+invalid words, it'll group that incorrect word with all the words that follow. 
+Furthermore, it considers capitalization in recognizing if a word is valid. 
+Also the form in which program prints out a token will be similar to the following:
+5417: < REGISTER, 5 >
+that is, "Line#: <CATEGORY, OPCODE >
+
+For a command with the -r flag, the program will only print out the intermediate 
+representation if no errors of any kind were encountered. Otherwise, it'll print out
+the syntactical and lexical errors like the reference solution. 
+
