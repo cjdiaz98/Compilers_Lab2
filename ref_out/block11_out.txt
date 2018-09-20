@@ -1,0 +1,46 @@
+// --- start of allocated code
+	loadI 0		=> r0	//  => vr40  <remat>
+	loadI 1		=> r1	//  => vr5  <remat>
+	loadI 1024	=> r2	//  => vr2  <remat>
+	add r0, r1	=> r0	// vr40, vr5 => vr39
+	lshift r1, r1	=> r3	// vr5, vr5 => vr38
+	add r0, r3	=> r0	// vr39, vr38 => vr37
+	lshift r3, r1	=> r3	// vr38, vr5 => vr36
+	add r0, r3	=> r0	// vr37, vr36 => vr35
+	lshift r3, r1	=> r3	// vr36, vr5 => vr34
+	add r0, r3	=> r0	// vr35, vr34 => vr33
+	lshift r3, r1	=> r3	// vr34, vr5 => vr32
+	add r0, r3	=> r0	// vr33, vr32 => vr31
+	lshift r3, r1	=> r3	// vr32, vr5 => vr30
+	add r0, r3	=> r0	// vr31, vr30 => vr29
+	lshift r3, r1	=> r3	// vr30, vr5 => vr28
+	add r0, r3	=> r0	// vr29, vr28 => vr27
+	lshift r3, r1	=> r3	// vr28, vr5 => vr26
+	add r0, r3	=> r0	// vr27, vr26 => vr25
+	lshift r3, r1	=> r3	// vr26, vr5 => vr24
+	add r0, r3	=> r0	// vr25, vr24 => vr23
+	lshift r3, r1	=> r3	// vr24, vr5 => vr22
+	add r0, r3	=> r0	// vr23, vr22 => vr21
+	lshift r3, r1	=> r3	// vr22, vr5 => vr20
+	add r0, r3	=> r0	// vr21, vr20 => vr19
+	lshift r3, r1	=> r3	// vr20, vr5 => vr18
+	add r0, r3	=> r0	// vr19, vr18 => vr17
+	lshift r3, r1	=> r3	// vr18, vr5 => vr16
+	add r0, r3	=> r0	// vr17, vr16 => vr15
+	lshift r3, r1	=> r3	// vr16, vr5 => vr14
+	add r0, r3	=> r0	// vr15, vr14 => vr13
+	lshift r3, r1	=> r3	// vr14, vr5 => vr12
+	add r0, r3	=> r0	// vr13, vr12 => vr11
+	lshift r3, r1	=> r3	// vr12, vr5 => vr10
+	add r0, r3	=> r0	// vr11, vr10 => vr8
+	lshift r3, r1	=> r3	// vr10, vr5 => vr9
+	add r0, r3	=> r0	// vr8, vr9 => vr7
+	store r0	=> r2	// vr7 => vr2
+	loadI 17	=> r0	//  => vr6  <remat>
+	lshift r1, r0	=> r0	// vr5, vr6 => vr4
+	sub r0, r1	=> r0	// vr4, vr5 => vr1
+	loadI 4		=> r1	//  => vr3  <remat>
+	add r2, r1	=> r2	// vr2, vr3 => vr0
+	store r0	=> r2	// vr1 => vr0
+	output 1024		// 
+	output 1028		// 

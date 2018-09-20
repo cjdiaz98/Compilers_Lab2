@@ -282,8 +282,8 @@ def rename():
                 SrToVr[curr_arr[j]] = vr_name
                 vr_name += 1
             # set NU and VR of the operand
-            curr_arr[j + 1] = LU[curr_arr[j]] # virtual register
-            curr_arr[j + 3] = SrToVr[curr_arr[j]] # next use
+            curr_arr[j + 1] = SrToVr[curr_arr[j]] # virtual register
+            curr_arr[j + 3] = LU[curr_arr[j]] # next use
             LU[curr_arr[j]] = math.inf
             SrToVr[curr_arr[j]] = -1
 
@@ -315,8 +315,8 @@ def rename():
                 vr_name += 1
 
             # set NU and VR of the operand
-            curr_arr[j + 1] = LU[curr_arr[j]] # virtual register
-            curr_arr[j + 3] = SrToVr[curr_arr[j]] # next use
+            curr_arr[j + 1] = SrToVr[curr_arr[j]] # virtual register
+            curr_arr[j + 3] = LU[curr_arr[j]] # next use
             LU[curr_arr[j]] = index
 
         # after we've looked thru uses and def's, then we check if
@@ -328,12 +328,75 @@ def rename():
     if vr_name != 0:
         MAX_VR = vr_name - 1
 
+def print_virtual(ir_entry):
+    """
+    
+    :param ir_entry: an IRArray object and member of the doubly linked list
+    :return: 
+    Nothing, but prints out the operation and its arguments
+    """
+    operations = ["load", "store","loadI", "add", "sub", "mult",
+                  "lshift", "rshift", "output", "nop"]
+    output = operations[ir_entry.opcode] + " "
+    arg_types = get_arg_types(ir_entry.opcode)
+    data = ir_entry.ir_data
+
+    if arg_types[0] == 1:
+        # register
+        # true for every op except loadI, output, and nop
+        output += "r%d " % data[1]
+    elif arg_types[0] == 0:
+        output += str(data[1])
+
+    if arg_types[1] == 1:
+        # register
+        # true for any numerical operation
+        output += ", r%d " % data[5]
+
+    if arg_types[2] == 1:
+        # register
+        # will be true for every case other than output and nop
+        output += "=> %d" % data[9]
+    print(output)
+
+def get_arg_types(opcode):
+    """
+    
+    :param opcode: opcode representing operation we want to print
+    :return: a three part list indicating the type of each respective argument. 
+    0 = constant
+    1 = register
+    None = empty
+    """
+    # operations = ["load", "store","loadI", "add", "sub", "mult",
+    #               "lshift", "rshift", "output", "nop"]
+    if opcode >= 0 and opcode <= 1:
+        return [1,None,1]
+    if opcode == 2:
+        return [0,None, 1]
+    if opcode >= 3 and opcode <= 7:
+        return [1,1,1]
+    if opcode == 8:
+        return [0,None, None]
+    else:
+        # NOP or invalid
+        return [None, None, None]
+
+
 def print_renamed_ir():
+    """
+        Will print out the IR after it's been renamed. 
+        The new ILOC will look identical to the old one, except that each register 
+        is defined exactly once. 
+    :return: 
+    """
     global IrHead
+    # TODO: first implement it so that it only prints out the virtual
+        # registers.
     curr = IrHead
 
     while curr != None:
-        print(curr.complete_to_string())
+        print_virtual(curr)
         curr = curr.next
 
 # TODO: how do we pass around VrToPr, PrToVr, PRNU
@@ -1068,6 +1131,10 @@ def parse():
         print("Total time take for parsing tokens:   %s"
               % str(time_end - time_start))
 
+
+# operations = [0 "LOAD", 1 "STORE",2 "LOADI",3 "ADD",4 "SUB", 5"MULT",
+#               6 "LSHIFT", 7 "RSHIFT", 8 "OUTPUT", 9 "NOP",
+#               10 "CONSTANT", 11 "REGISTER", 12 "COMMA", 13"INTO", 14"ENDFILE"]
 
 def finish_memop(token_list):
     """
