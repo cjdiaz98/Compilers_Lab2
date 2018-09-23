@@ -1,0 +1,15 @@
+invoking reference allocator:
+/clear/courses/comp412/students/lab2/scripts
+
+
+invoking the reference:
+/clear/courses/comp412/students/lab2/lab2_ref k <file name>
+
+seeing test blocks:
+/clear/courses/comp412/students/ILOC
+/clear/courses/comp412/students/ILOC/blocks/lab2 or lab3
+
+report blocks:
+/clear/courses/comp412/students/lab2/report
+
+~/comp412/lab2 and test_blocks

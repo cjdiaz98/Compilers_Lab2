@@ -1,2 +1,2 @@
 #!/bin/bash 
-python3 lab2.py $@
+python lab2.py $@

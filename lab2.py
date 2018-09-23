@@ -34,8 +34,10 @@ tot_block_len = 0
 VrToPr = []
 PrToVr = []
 PrNu = []
-pr_stack = [] # stack of free PRs
-
+pr_queue = [] # stack of free PRs
+spilled_bits = 0
+# keeps track of which virtual registers have been spilled
+    # note: we'll only ever add bits to this number
 
 class IRArray:
     def __init__(self, opcode, int1, int2, int3):
@@ -159,7 +161,6 @@ class IRArray:
             output += ":[ %d ] " % self.ir_data[11]
         return output
 
-
 def print_ir():
     """
     Prints out the intermediate representation in an 
@@ -237,6 +238,10 @@ def main():
             print("About to print renamed")
         rename()
         print_renamed_ir()
+
+        if verbose:
+            # check that we didn't prematurely use any undefined registers
+            check_not_using_undefined()
         # then we print the renamed intermediate representation
         return
     else:
@@ -250,7 +255,7 @@ def rename():
         Will print out the output. 
     :return: 
     """
-    global IrHead, IrTail, MAXLIVE, MAX_VR
+    global IrHead, IrTail, MAXLIVE, MAX_VR, k
     SrToVr = []
     LU = []
 
@@ -281,10 +286,12 @@ def rename():
                 # if we hit the definition of the SR, then we decrement curr_max
                 SrToVr[curr_arr[j]] = vr_name
                 vr_name += 1
+
             # set NU and VR of the operand
             curr_arr[j + 1] = SrToVr[curr_arr[j]] # virtual register
             curr_arr[j + 3] = LU[curr_arr[j]] # next use
-            LU[curr_arr[j]] = math.inf
+            LU[curr_arr[j]] = -1 # NOTE: we represent infinity with -1.
+            # LU[curr_arr[j]] = math.inf
             SrToVr[curr_arr[j]] = -1
 
         ###################################
@@ -325,13 +332,20 @@ def rename():
             MAXLIVE = curr_max
         index -= 1
         curr = curr.prev
+
+    if MAXLIVE > k:
+        k -= 1
+        # we have to reserve a pr for spilling
+
     if vr_name != 0:
         MAX_VR = vr_name - 1
 
-def print_virtual(ir_entry):
+def print_operation(ir_entry, offset):
     """
     
     :param ir_entry: an IRArray object and member of the doubly linked list
+    :param offset: corresponds to the register type that we want to print out. 
+    0 = source, 1 = virtual, 2 = physical
     :return: 
     Nothing, but prints out the operation and its arguments
     """
@@ -344,19 +358,19 @@ def print_virtual(ir_entry):
     if arg_types[0] == 1:
         # register
         # true for every op except loadI, output, and nop
-        output += "r%d " % data[1]
+        output += "r%d " % data[0 + offset]
     elif arg_types[0] == 0:
-        output += str(data[1])
+        output += str(data[0]) + " "
 
     if arg_types[1] == 1:
         # register
         # true for any numerical operation
-        output += ", r%d " % data[5]
+        output += ", r%d " % data[4 + offset]
 
     if arg_types[2] == 1:
         # register
         # will be true for every case other than output and nop
-        output += "=> %d" % data[9]
+        output += "=> r%d" % data[8 + offset]
     print(output)
 
 def get_arg_types(opcode):
@@ -373,7 +387,7 @@ def get_arg_types(opcode):
     if opcode >= 0 and opcode <= 1:
         return [1,None,1]
     if opcode == 2:
-        return [0,None, 1]
+        return [0,None,1]
     if opcode >= 3 and opcode <= 7:
         return [1,1,1]
     if opcode == 8:
@@ -396,33 +410,134 @@ def print_renamed_ir():
     curr = IrHead
 
     while curr != None:
-        print_virtual(curr)
+        print_operation(curr,1)
         curr = curr.next
 
-# TODO: how do we pass around VrToPr, PrToVr, PRNU
+def check_pr_vr():
+    """
+    Will print out all the virtual registers in violation of the 
+    PRToVR[VRToPR[vr]] = vr rule
+    :return: 
+    Returns true if the mapping wasn't violated, else false.
+    """
+    global VrToPr, PrToVr, MAX_VR
+    valid = true
+    for v in range(MAX_VR):
+        if VrToPr[v] != -1 and PrToVr[VrToPr[v]] != v:
+            valid = false
+            print("VR %d violated. Corresponding pr %d mapped to %d" %
+                  (v, VrToPr[v], PrToVr[VrToPr[v]]))
+    return valid
+
+def check_not_using_undefined():
+    global IrHead, MAX_VR
+    defined = []
+    operations = ["load", "store","loadI", "add", "sub", "mult",
+                  "lshift", "rshift", "output", "nop"]
+    for i in range(MAX_VR + 1):
+        defined.append(False)
+    # print("Max vr %d" % MAX_VR)
+    curr = IrHead
+    line = 1
+
+    while curr != None:
+        uses = get_used(curr.opcode)
+        for i in uses:
+            if not defined[curr.ir_data[i + 1]]:
+                print("Register r%d for %s at Line %d not defined before this" %
+                      (curr.ir_data[i + 1], operations[curr.opcode], line))
+
+        defined_ind = get_defined(curr.opcode)
+        for i in defined_ind:
+            # print("defined ind: %d" % curr.ir_data[i + 1])
+            defined[curr.ir_data[i + 1]] = True
+
+        curr = curr.next
+        line += 1
+
 def getAPR(vr, nu):
     """"""
     global VrToPr, PrToVr, PrNu
     # We should always conserve the property VrToPr[VrToPr[vr]] = vr
     # when VrToPr[vr] != invalid
 
-    if pr_stack: # if stack isn't empty
-        x = pr_stack.pop()
+    if pr_queue: # if stack isn't empty
+        x = pr_queue.pop()
     else:
-        # TODO: pick an x to spill here!
-        x = spill()
+        # note: x is a physical register
+        x = find_spill()
+        spill(x)
 
     VrToPr[vr] = x
     PrToVr[x] = vr
     PrNu[x] = nu
     return x
 
+def find_spill():
+    """
+    Returns the physical register which we should spill
+    :return: 
+    Number of physical register
+    """
+    global PrNu
+    # TODO: first simple heuristic is most distantly used
+    # note: we assume that every PR has a next use,
+        # else we wouldn't be here
+    curr_max = -1
+    pr = -1
+    for i in range(len(PrNu)):
+        if PrNu[i] > curr_max:
+            curr_max = PrNu[i]
+            pr = i
+        # todo: maybe add an additional check to look for clean values
+    return pr
+
+def get_spill_addr(vr):
+    """
+    Note: for the purposes of this lab, we assume that all memory addressed
+    32768 and beyond is reserved for spilling. 
+    :param vr: 
+        VR for which we need to find a spill address. 
+    :return: 
+        The VR's spill address. 
+    """
+    return 32768 + 4 * vr
+
+def check_prim_location(value):
+    """
+    Checks if the primary memory location has this value
+    
+    :param value: 
+    :return: 
+    """
+    # TODO: finish this!!!! can we even check this?
+
+def check_spill_addr(pr):
+    """
+    Check if the value has already been spilled
+    :param vr: primary register we're trying to spill 
+    :return: Returns boolean value
+    """
+    global PrToVr, spilled_bits
+    vr = PrToVr[pr]
+    if (spilled_bits & vr < 1) > 0:
+        return True
+    else:
+        return False
+
+
 def freeAPR(pr):
-    """"""
-    global VrToPr, PrToVr, PrNu
+    """
+    Will free a pr. Will also add it to the queue.
+    Maintains the appropriate maps to keep them up to date and consistent. 
+    :param pr: pr which we want to free. 
+    :return: 
+    """
+    global VrToPr, PrToVr, PrNu, pr_queue
     VrToPr[PrToVr[pr]] = -1
     PrToVr[pr] = -1
-    PrNu[pr] = math.inf
+    PrNu[pr] = -1
+    pr_queue.append(pr)
 
 def get_defined(opcode):
     """
@@ -438,10 +553,7 @@ def get_defined(opcode):
     if verbose:
         print("opcode %d" % opcode)
 
-    if opcode == 1:
-        # store operation
-        return [0]
-    elif opcode == 8 or opcode == 9:
+    elif opcode == 1 or opcode == 8 or opcode == 9:
         return []
     else:
         return [8]
@@ -462,7 +574,7 @@ def get_used(opcode):
         print("opcode %d" % opcode)
     if opcode == 1:
         # store operation
-        return [8]
+        return [0,8]
     elif opcode == 2 or opcode == 8 or opcode == 9:
         return []
     elif opcode == 0:
@@ -471,31 +583,59 @@ def get_used(opcode):
         return [0, 4]
 
 def spill(x):
-    """"""
-    # see page 689 of chapter 18
+    """
+    
+    :param x: the physical register we want to spill
+    :return: 
+    Nothing. 
+    Prints out the necessary ILOC to spill
+    """
+    global PrToVr, spilled_bits
+    if check_spill_addr(x):
+        return # we don't need to spill, as the value is already in spill addr
+    # to spill, we loadI then store
+
+    # record that we've spilled this virtual register
+    spilled_bits = spilled_bits | (1 < PrToVr[x])
+
+    # now print out!!
+    print("loadI %d => r%d" % (get_spill_addr(PrToVr[x]), k + 1))
+    # note: that we've reserved register k + 1
+    print("store r%d => r%d" % (x, k+1))
+    # note: we print out the values right away
 
 # TODO: where are we going to want to add new operations, such as the
     # immediate load operation detailed on page 689?
     # would it be in spill?
 
 def restore(vr, pr):
-    """"""
-
+    """
+    
+    :param vr: virtual register which we're trying to restore 
+    :param pr: physical register corresponding to this vr. 
+    :return: 
+    Nothing. 
+    Will print out the ILOC code necessary to restore the value. 
+    """
+    print("loadI %d => r%d" % (get_spill_addr(vr), k + 1))
+    print("load r%d => r%d" % (k + 1, pr))
 
 def reg_alloc():
     """
-    
+        
     :return: 
     """
-    global MAX_VR, MAXLIVE, k, IrHead
+    # note: structure of registers in IR is <SR, VR, PR, NU>
+    global MAX_VR, MAXLIVE, k, IrHead, pr_queue
 
     for i in range(MAX_VR):
-        VrToPr.append(i)
+        VrToPr.append(-1)
 
     for i in range(k):
         PrToVr.append(-1)
-        PrNu.append(math.inf)
-        # push pr onto the stack
+        PrNu.append(-1) # -1 represents infinity
+        pr_queue.append(i)
+        # push pr onto the queue
 
     curr = IrHead
     while curr != None:
@@ -507,26 +647,24 @@ def reg_alloc():
             # iterate through the uses and allocate
             if curr_arr[i + 2] == -1:
                 # we assign a PR to those operations that don't have
-                curr_arr[i + 2] = getAPR()
-
+                curr_arr[i + 2] = getAPR(curr_arr[i + 1], curr_arr[i + 3])
+                restore(curr_arr[i + 1], curr_arr[i + 2])
+                # TODO: check this usage of restore!!!!!
 
         for i in get_used(opcode):
             # check if this is the last use
             # reiterate over the uses and re-checks if any of them are
                 # the last use of the VR. if so we free the PR
             if curr_arr[i + 3] == -1:
-                freeAPR()
-                push()
+                free_pr = curr_arr[i + 2]
+                freeAPR(free_pr)
 
         for i in get_defined(opcode):
             # allocate definitions
             curr_arr[i + 2] = getAPR()
-
-    # TODO: how will we represent the stack used in the pseudocode?
-
+        print_operation(curr.ir_data, 2)
+        curr = curr.next
     # TODO: note -- are we going to do rematerialization??
-
-
 
 def init_double_buf():
     """
