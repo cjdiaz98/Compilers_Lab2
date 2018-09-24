@@ -143,10 +143,6 @@ class IRArray:
 
         output = operations[self.opcode] + "(" + str(self.opcode) + ")  "
 
-        if verbose:
-            print("actual array:")
-            print(self.ir_data)
-
         for i in range(11):
             output += reg_array[i]
             if self.ir_data[i] == None:
@@ -169,9 +165,6 @@ def print_ir():
     :return: None
     """
     global IrHead
-
-    if verbose:
-        print("about to print out intermediate representation")
     next_ir = IrHead
 
     while next_ir != None:
@@ -198,6 +191,7 @@ def main():
 
     if is_number(sys.argv[1]):
         k = int(sys.argv[1])
+        flag_level = 2
 
     if "-x" in sys.argv:
         flag_level = 1
@@ -219,8 +213,6 @@ def main():
         print("Note: 412alloc takes only 1 flag:"
               "412fe <flag> <filename>. You specified %d " % numFlags)
 
-    if flag_level == -1:
-        flag_level = 2
     if flag_level == 0:
         print("412alloc.py takes the arguments <k|-x> <filename>")
         return
@@ -233,10 +225,10 @@ def main():
     init_double_buf()
     parse()
 
+    rename() # do the renaming regardless
     if flag_level == 1:
         if verbose:
             print("About to print renamed")
-        rename()
         print_renamed_ir()
 
         if verbose:
@@ -274,13 +266,12 @@ def rename():
     index = tot_block_len
     while curr != None:
         curr_arr = curr.ir_data
-        # print(curr_arr)
         # look through all the operands that we define first
 
         defined = get_defined(curr.opcode)
         for j in defined:
-            if verbose:
-                print("current register: %d" % curr_arr[j])
+            # if verbose:
+            #     print("current register: %d" % curr_arr[j])
             if SrToVr[curr_arr[j]] == -1:
                 curr_max -= 1
                 # if we hit the definition of the SR, then we decrement curr_max
@@ -294,26 +285,12 @@ def rename():
             # LU[curr_arr[j]] = math.inf
             SrToVr[curr_arr[j]] = -1
 
-        ###################################
-        # TODO's:
-        # have another function that takes in the IRArray and adds to the
-            # mapping
-        # how are we going to deal with entries that don't yet exist in the mappings?
-            # ie for registers that are out of range
-        # note: to set NU, VR and all that we're literally filling in the array!
-            # when do we print it out though
-        # ignore NOP. maybe ignore output?
-
-        # calculating maxlive --> do we just decrement with
-        # every definition on a line and increment with every first new use?
-        #####################################
-
         # look through all the operands that we use next
         used = get_used(curr.opcode)
 
         for j in used:
-            if verbose:
-                print("current register: %d" % curr_arr[j])
+            # if verbose:
+            #     print("current register: %d" % curr_arr[j])
             if SrToVr[curr_arr[j]] == -1:
                 curr_max += 1
                 # if we haven't see this operation before, then we
@@ -334,6 +311,8 @@ def rename():
         curr = curr.prev
 
     if MAXLIVE > k:
+        if verbose:
+            print("need to reserve a spill register. Only have %d now" % (k - 1))
         k -= 1
         # we have to reserve a pr for spilling
 
@@ -354,7 +333,6 @@ def print_operation(ir_entry, offset):
     output = operations[ir_entry.opcode] + " "
     arg_types = get_arg_types(ir_entry.opcode)
     data = ir_entry.ir_data
-
     if arg_types[0] == 1:
         # register
         # true for every op except loadI, output, and nop
@@ -396,7 +374,6 @@ def get_arg_types(opcode):
         # NOP or invalid
         return [None, None, None]
 
-
 def print_renamed_ir():
     """
         Will print out the IR after it's been renamed. 
@@ -421,12 +398,14 @@ def check_pr_vr():
     Returns true if the mapping wasn't violated, else false.
     """
     global VrToPr, PrToVr, MAX_VR
-    valid = true
+    valid = True
     for v in range(MAX_VR):
         if VrToPr[v] != -1 and PrToVr[VrToPr[v]] != v:
-            valid = false
+            valid = False
             print("VR %d violated. Corresponding pr %d mapped to %d" %
                   (v, VrToPr[v], PrToVr[VrToPr[v]]))
+            print("Meanwhile VR %d maps to %d" %
+                  (PrToVr[VrToPr[v]], VrToPr[PrToVr[VrToPr[v]]]))
     return valid
 
 def check_not_using_undefined():
@@ -456,8 +435,13 @@ def check_not_using_undefined():
         line += 1
 
 def getAPR(vr, nu):
-    """"""
-    global VrToPr, PrToVr, PrNu
+    """
+    
+    :param vr: 
+    :param nu: 
+    :return: 
+    """
+    global VrToPr, PrToVr, PrNu, MAX_VR
     # We should always conserve the property VrToPr[VrToPr[vr]] = vr
     # when VrToPr[vr] != invalid
 
@@ -465,9 +449,13 @@ def getAPR(vr, nu):
         x = pr_queue.pop()
     else:
         # note: x is a physical register
+        # if verbose:
+        #     print("queue is empty")
         x = find_spill()
         spill(x)
 
+    # print("vr %d" % vr)
+    # print("max vr %d" % len(VrToPr))
     VrToPr[vr] = x
     PrToVr[x] = vr
     PrNu[x] = nu
@@ -490,6 +478,8 @@ def find_spill():
             curr_max = PrNu[i]
             pr = i
         # todo: maybe add an additional check to look for clean values
+    if verbose:
+        print("found spill: %d" % pr)
     return pr
 
 def get_spill_addr(vr):
@@ -501,7 +491,7 @@ def get_spill_addr(vr):
     :return: 
         The VR's spill address. 
     """
-    return 32768 + 4 * vr
+    return 32772 + 4 * vr
 
 def check_prim_location(value):
     """
@@ -520,11 +510,10 @@ def check_spill_addr(pr):
     """
     global PrToVr, spilled_bits
     vr = PrToVr[pr]
-    if (spilled_bits & vr < 1) > 0:
+    if (spilled_bits & (1 << vr)) > 0:
         return True
     else:
         return False
-
 
 def freeAPR(pr):
     """
@@ -550,10 +539,10 @@ def get_defined(opcode):
     # operations = [0 "LOAD", 1 "STORE",2 "LOADI",3 "ADD",4 "SUB", 5"MULT",
     #               6 "LSHIFT", 7 "RSHIFT", 8 "OUTPUT", 9 "NOP",
     #               10 "CONSTANT", 11 "REGISTER", 12 "COMMA", 13"INTO", 14"ENDFILE"]
-    if verbose:
-        print("opcode %d" % opcode)
+    # if verbose:
+    #     print("opcode %d" % opcode)
 
-    elif opcode == 1 or opcode == 8 or opcode == 9:
+    if opcode == 1 or opcode == 8 or opcode == 9:
         return []
     else:
         return [8]
@@ -570,8 +559,8 @@ def get_used(opcode):
     #               6 "LSHIFT", 7 "RSHIFT", 8 "OUTPUT", 9 "NOP",
     #               10 "CONSTANT", 11 "REGISTER", 12 "COMMA", 13"INTO", 14"ENDFILE"]
 
-    if verbose:
-        print("opcode %d" % opcode)
+    # if verbose:
+    #     print("opcode %d" % opcode)
     if opcode == 1:
         # store operation
         return [0,8]
@@ -590,18 +579,20 @@ def spill(x):
     Nothing. 
     Prints out the necessary ILOC to spill
     """
-    global PrToVr, spilled_bits
+    global PrToVr, spilled_bits, VrToPr
     if check_spill_addr(x):
+        if verbose:
+            print("pr %d is already in memory" % x)
         return # we don't need to spill, as the value is already in spill addr
     # to spill, we loadI then store
 
     # record that we've spilled this virtual register
-    spilled_bits = spilled_bits | (1 < PrToVr[x])
-
+    spilled_bits = spilled_bits | (1 << PrToVr[x])
     # now print out!!
-    print("loadI %d => r%d" % (get_spill_addr(PrToVr[x]), k + 1))
+    VrToPr[PrToVr[x]] = -1 # unmap this VR because we're spilling it.
+    print("loadI %d => r%d // spill" % (get_spill_addr(PrToVr[x]), k))
     # note: that we've reserved register k + 1
-    print("store r%d => r%d" % (x, k+1))
+    print("store r%d => r%d // spill" % (x,k))
     # note: we print out the values right away
 
 # TODO: where are we going to want to add new operations, such as the
@@ -617,8 +608,11 @@ def restore(vr, pr):
     Nothing. 
     Will print out the ILOC code necessary to restore the value. 
     """
-    print("loadI %d => r%d" % (get_spill_addr(vr), k + 1))
-    print("load r%d => r%d" % (k + 1, pr))
+    global PrToVr, VrToPr
+    print("loadI %d => r%d // restore" % (get_spill_addr(vr), k))
+    print("load r%d => r%d // restore" % (k, pr))
+    PrToVr[pr] = vr
+    VrToPr[vr] = pr
 
 def reg_alloc():
     """
@@ -626,9 +620,9 @@ def reg_alloc():
     :return: 
     """
     # note: structure of registers in IR is <SR, VR, PR, NU>
-    global MAX_VR, MAXLIVE, k, IrHead, pr_queue
+    global MAX_VR, MAXLIVE, k, IrHead, pr_queue, VrToPr, PrToVr, PrNu
 
-    for i in range(MAX_VR):
+    for i in range(MAX_VR + 1):
         VrToPr.append(-1)
 
     for i in range(k):
@@ -636,33 +630,44 @@ def reg_alloc():
         PrNu.append(-1) # -1 represents infinity
         pr_queue.append(i)
         # push pr onto the queue
-
+    line_num = 0
     curr = IrHead
     while curr != None:
+        line_num += 1
+        if verbose:
+            print("on line: %d " % line_num)
         # we make a single pass through the operations
         curr_arr = curr.ir_data
         opcode = curr.opcode
+        # print(get_used(opcode))
 
         for i in get_used(opcode):
+            # TODO: CHECK THIS!!!
             # iterate through the uses and allocate
-            if curr_arr[i + 2] == -1:
+            if VrToPr[curr_arr[i + 1]] == -1:
+            # if curr_arr[i + 2] == None:
                 # we assign a PR to those operations that don't have
                 curr_arr[i + 2] = getAPR(curr_arr[i + 1], curr_arr[i + 3])
                 restore(curr_arr[i + 1], curr_arr[i + 2])
                 # TODO: check this usage of restore!!!!!
+            curr_arr[i + 2] = VrToPr[curr_arr[i + 1]]
 
         for i in get_used(opcode):
             # check if this is the last use
             # reiterate over the uses and re-checks if any of them are
                 # the last use of the VR. if so we free the PR
             if curr_arr[i + 3] == -1:
+                #check if this is the last use of this register and free if so
                 free_pr = curr_arr[i + 2]
                 freeAPR(free_pr)
 
         for i in get_defined(opcode):
             # allocate definitions
-            curr_arr[i + 2] = getAPR()
-        print_operation(curr.ir_data, 2)
+            # if verbose:
+            #     print_operation(curr, 1)
+            curr_arr[i + 2] = getAPR(curr_arr[i + 1], curr_arr[i + 3])
+        print_operation(curr, 2)
+        check_pr_vr()
         curr = curr.next
     # TODO: note -- are we going to do rematerialization??
 
@@ -713,17 +718,10 @@ def next_char():
         temp = f.read(BUF_SIZE)
         temp_len = len(temp)
 
-
-        if verbose:
-            print("Reading next buffer in:")
-            # print(buf1)
-            # print("buffer1 length:  %d" % len(buf1))
-            # print("buffer2 length:  %d" % buf2_len)
         if temp == "":
             # if the end of file has been reached, then we don't overwrite
             # the buffer in the case that we need to rollback
-            if verbose:
-                print("Hit EOF")
+
             EOF = True
             f.close()
             char = ""
@@ -731,8 +729,6 @@ def next_char():
         else:
             # then we're going to overwrite the 1st buffer with the 2nd one
             # and the second one with the new one
-            if verbose:
-                print("buffer2 length:  %d" % buf2_len)
             buf2_len = temp_len
             buf1_len = buf2_len
             i = buf1_len
@@ -746,14 +742,10 @@ def next_char():
             #     print(buf2)
             #     print("char %s" % get_char())
                 # reset the information we have about the buffer
-    # if verbose:
-    #     print("about to increment char")
-    # i = (i + 1) % (2 * BUF_SIZE)
+
     # if we get down here, then we know that 0 < i < 2 * BUF_SIZE
     get_char()
     i += 1
-    # if verbose:
-    #     print("char   %s, next index: %d" % (char, i))
 
 def rollback():
     """
@@ -764,17 +756,13 @@ def rollback():
         Else will return 0. 
     """
     global i, char
-    # if verbose:
-    #     print("rolling back")
     if i <= 0:
         print("ERROR - can't rollback past the start of the current line")
         return -1
     else:
         i -= 1
         get_char()
-        # if verbose:
-        #     print("Rollback successful")
-        #     print("char   %s" % char)
+
 
 def detect_int():
     """    
@@ -815,8 +803,7 @@ def skip_comment():
     next_char()
     while char != "\n" and char != "":
         next_char()
-    if verbose:
-        print("comment skipped")
+
 
 
 def is_number(s):
@@ -882,22 +869,14 @@ def scan():
         while char == " " or char == "\t":
             # Whitespace is any combination of tabs and spaces
             # --> we'll skip past this.
-            # if verbose:
-            #     print("skimmming whitespace")
             next_char()
         if char == "\n":
-            # if verbose:
-            #     print("newline found")
             break
 
         if char == "":
             # if empty string then we've hit the end of file
             # ENDFILE 14
             token = [line_num, 14, ""]
-            if verbose:
-                print("EOF found")
-                print("double buffer currently: \n %s" % buf2)
-                print("value of i %d, curr char %s" % (i, char))
             if not tokens_found:
                 token_list.append(token)
             return token_list
@@ -945,8 +924,7 @@ def scan():
                             next_char()
                             if char == "t":
                                 curr_string += char
-                                # if verbose:
-                                #     print("Lshift found")
+
                                 # LSHIFT (6)
                                 token = [line_num, 6, curr_string]
                                 found = True
@@ -964,16 +942,14 @@ def scan():
                             curr_string += char
                             # LOADI (2)
                             token = [line_num, 2, curr_string]
-                            # if verbose:
-                            #     print("Loadi found")
+
                             found = True
                             next_char()
                         else:
                             # print("before load rollback %d buf1len %d buf2len %d"
                             #       % (i, len(buf1),buf2_len))
                             # then rollback here to LOAD (1)
-                            # if verbose:
-                            #     print("Load found")
+
                             if rollback() != -1:
                                 token = [line_num, 0, curr_string]
                                 found = True
@@ -998,8 +974,6 @@ def scan():
                             if char == "t":
                                 curr_string += char
                                 # RSHIFT (7)
-                                # if verbose:
-                                #     print("Rshift found")
                                 token = [line_num, 7, curr_string]
                                 found = True
                                 next_char()
@@ -1010,8 +984,6 @@ def scan():
                     detect_int()
                     # we successfully found a number and attached it to curr_string
                     found = True
-                    # if verbose:
-                    #     print("Register found")
                     token = [line_num, 11, curr_string[1:]]
                     num_value = int(curr_string[1:])
                     if num_value > MAX_SOURCE:
@@ -1031,8 +1003,6 @@ def scan():
                     next_char()
                     if char == "t":
                         curr_string += char
-                        # if verbose:
-                        #     print("Mult found")
                         # MULT (5)
                         token = [line_num, 5, curr_string]
                         found = True
@@ -1046,8 +1016,6 @@ def scan():
                 if char == "d":
                     curr_string += char
                     # ADD (3)
-                    # if verbose:
-                    #     print("Add found")
                     token = [line_num, 3, curr_string]
                     found = True
                     next_char()
@@ -1061,8 +1029,6 @@ def scan():
                 if char == "p":
                     curr_string += char
                     # NOP (9)
-                    # if verbose:
-                    #     print("Nop found")
                     token = [line_num, 9, curr_string]
                     found = True
                     next_char()
@@ -1084,8 +1050,6 @@ def scan():
                             if char == "t":
                                 curr_string += char
                                 # OUTPUT (8)
-                                # if verbose:
-                                #     print("Output found")
                                 token = [line_num, 8, curr_string]
                                 found = True
                                 next_char()
@@ -1096,16 +1060,12 @@ def scan():
                 # INTO (=>) (13)
                 curr_string += char
                 token = [line_num, 13, curr_string]
-                # if verbose:
-                #     print("Into found")
                 found = True
                 next_char()
         elif char == ",":
             curr_string += char
             # COMMA (,) (12)
             token = [line_num, 12, curr_string]
-            # if verbose:
-            #     print("Comma found")
             found = True
             next_char()
         elif char == "/":
@@ -1113,8 +1073,6 @@ def scan():
             if char == "/":
                 # found a comment -- burn through the rest of the line
                 # and then return the tokens that we have so far
-                # if verbose:
-                #     print("Comment found")
                 skip_comment()
                 return token_list
         else:
@@ -1122,8 +1080,7 @@ def scan():
             if is_number(char):
                 detect_int()
                 token = [line_num, 10, curr_string]
-                # if verbose:
-                #     print("Constant found")
+
                 found = True
                 # we successfully found a number
             else:
@@ -1135,7 +1092,6 @@ def scan():
                     and char != "/":
                 curr_string += char
                 next_char()
-                # todo: do we want this behavior??
 
             # then output an error here
             # append the last-read character onto curr_string
@@ -1149,16 +1105,10 @@ def scan():
             # but is permissible
             lexical_err_present = True
             # empty the token list. We've already reported the lexical error
-            # if verbose:
-            #     print("Unrecognized word:  %s" % curr_string)
-            # TODO: do we want to skip this line, or just find the rest of the scanning errors?
             lex_errors += 1
             # next_char()
 
         else:
-            # if verbose:
-            #     print(
-            #         "Recognized word:  %s on line %d" % (curr_string, line_num))
             token_list.append(token)
             tokens_found = True
             # next_char() # read the next character in
@@ -1218,8 +1168,6 @@ def parse():
         # operations = [0 "LOAD", 1 "STORE",2 "LOADI",3 "ADD",4 "SUB", 5"MULT",
         #               6 "LSHIFT", 7 "RSHIFT", 8 "OUTPUT", 9 "NOP",
         #               10 "CONSTANT", 11 "REGISTER", 12 "COMMA", 13"INTO", 14"ENDFILE"]
-        if EOF and verbose:
-            print("END OF FILE FOUND IN PARSER!!!")
         if tok_cat >= 0 and tok_cat <= 1:
             next_ir_arr = finish_memop(token_list)
         elif tok_cat == 2:
@@ -1264,10 +1212,6 @@ def parse():
         if verbose and syntax_errors + lex_errors > 0:
             print("Errors encountered, but now printing out the incomplete IR:")
             print_ir()
-    if verbose:
-        time_end = datetime.now()
-        print("Total time take for parsing tokens:   %s"
-              % str(time_end - time_start))
 
 
 # operations = [0 "LOAD", 1 "STORE",2 "LOADI",3 "ADD",4 "SUB", 5"MULT",
@@ -1287,8 +1231,7 @@ def finish_memop(token_list):
     to diagnose faults with the token list. 
     """
     global syntax_errors
-    if verbose:
-        print("parsing Memop")
+
     valid = True
     tok_len = len(token_list)
     if tok_len != 4:
@@ -1339,8 +1282,6 @@ def finish_loadI(token_list):
     :return: 
     """
     global syntax_errors
-    if verbose:
-        print("parsing loadI")
     valid = True
     tok_len = len(token_list)
 
@@ -1382,8 +1323,7 @@ def finish_loadI(token_list):
 
 def finish_arithop(token_list):
     global syntax_errors
-    if verbose:
-        print("parsing arithop")
+
     valid = True
     tok_len = len(token_list)
 
@@ -1440,8 +1380,6 @@ def finish_arithop(token_list):
 
 def finish_nop(token_list):
     global syntax_errors
-    if verbose:
-        print("parsing nop")
 
     # print("%d  %d  %s" % (token_list[0][0], token_list[0][1], token_list[0][2]))
 
@@ -1459,8 +1397,7 @@ def finish_nop(token_list):
 
 def finish_output(token_list):
     global syntax_errors
-    if verbose:
-        print("parsing output")
+
     valid = True
     tok_len = len(token_list)
     if tok_len != 2:
