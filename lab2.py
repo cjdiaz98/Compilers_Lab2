@@ -36,6 +36,9 @@ PrToVr = []
 PrNu = []
 pr_queue = [] # stack of free PRs
 spilled_bits = 0
+Remat_Map = {}
+# REMAT_THRESH = 5 # todo: will this ever be greater than 1?
+
 # keeps track of which virtual registers have been spilled
     # note: we'll only ever add bits to this number
 
@@ -328,28 +331,50 @@ def print_operation(ir_entry, offset):
     :return: 
     Nothing, but prints out the operation and its arguments
     """
+    output = constr_op_string(ir_entry, offset, False)
+    if offset == 2:
+        output += " " + constr_op_string(ir_entry, 1, True)
+
+    print(output)
+
+def constr_op_string(ir_entry, offset, vr):
+    """
+    
+    :param ir_entry: 
+    :param offset: 
+    :param vr: whether or not we want to include vr representation as a comment
+    :return: 
+    """
     operations = ["load", "store","loadI", "add", "sub", "mult",
                   "lshift", "rshift", "output", "nop"]
-    output = operations[ir_entry.opcode] + " "
+    if vr:
+        output = "// " + operations[ir_entry.opcode] + " "
+    else:
+        output = operations[ir_entry.opcode] + " "
+
+    r_string = "r"
+    if vr:
+        r_string = "vr"
+
     arg_types = get_arg_types(ir_entry.opcode)
     data = ir_entry.ir_data
     if arg_types[0] == 1:
         # register
         # true for every op except loadI, output, and nop
-        output += "r%d " % data[0 + offset]
+        output += "%s%d " % (r_string, data[0 + offset])
     elif arg_types[0] == 0:
         output += str(data[0]) + " "
 
     if arg_types[1] == 1:
         # register
         # true for any numerical operation
-        output += ", r%d " % data[4 + offset]
+        output += ", %s%d " % (r_string ,data[4 + offset])
 
     if arg_types[2] == 1:
         # register
         # will be true for every case other than output and nop
-        output += "=> r%d" % data[8 + offset]
-    print(output)
+        output += "=> %s%d" % (r_string, data[8 + offset])
+    return output
 
 def get_arg_types(opcode):
     """
@@ -434,6 +459,23 @@ def check_not_using_undefined():
         curr = curr.next
         line += 1
 
+def check_all_pr_mapped():
+    """
+    Checks that all the physical regsiters are mapped to a vr
+    :return: 
+    """
+    global PrToVr
+    for i in range(len(PrToVr)):
+        if PrToVr[i] == -1:
+            print("PR %d NOT MAPPED PROPERLY!!" % i )
+
+
+# we will rematerialize a value if it isn't located in the the spill memory address
+# this is because it would be in the spill address if we had chosen to spill it
+# in the case that it is rematerializable, we'll forego the restore step and just
+# loadI it directly into the register
+# we can keep a map from virtual registers to rematerializable values
+
 def getAPR(vr, nu):
     """
     
@@ -441,7 +483,7 @@ def getAPR(vr, nu):
     :param nu: 
     :return: 
     """
-    global VrToPr, PrToVr, PrNu, MAX_VR
+    global VrToPr, PrToVr, PrNu, MAX_VR, pr_queue
     # We should always conserve the property VrToPr[VrToPr[vr]] = vr
     # when VrToPr[vr] != invalid
 
@@ -451,6 +493,7 @@ def getAPR(vr, nu):
         # note: x is a physical register
         # if verbose:
         #     print("queue is empty")
+        check_all_pr_mapped()
         x = find_spill()
         spill(x)
 
@@ -474,6 +517,9 @@ def find_spill():
     curr_max = -1
     pr = -1
     for i in range(len(PrNu)):
+        # if PrNu[i] == -1:
+        #     pr = i
+        #     break
         if PrNu[i] > curr_max:
             curr_max = PrNu[i]
             pr = i
@@ -583,18 +629,19 @@ def spill(x):
     if check_spill_addr(x):
         if verbose:
             print("pr %d is already in memory" % x)
+        VrToPr[PrToVr[x]] = -1  # unmap this VR because we're spilling it.
         return # we don't need to spill, as the value is already in spill addr
     # to spill, we loadI then store
 
     # record that we've spilled this virtual register
     spilled_bits = spilled_bits | (1 << PrToVr[x])
     # now print out!!
-    VrToPr[PrToVr[x]] = -1 # unmap this VR because we're spilling it.
     print("loadI %d => r%d // spill" % (get_spill_addr(PrToVr[x]), k))
     # note: that we've reserved register k + 1
-    print("store r%d => r%d // spill" % (x,k))
+    print("store r%d => r%d // spill vr %d" % (x,k, PrToVr[x]))
     # note: we print out the values right away
-
+    VrToPr[PrToVr[x]] = -1 # unmap this VR because we're spilling it.
+    PrToVr[x] = -1
 # TODO: where are we going to want to add new operations, such as the
     # immediate load operation detailed on page 689?
     # would it be in spill?
@@ -608,11 +655,16 @@ def restore(vr, pr):
     Nothing. 
     Will print out the ILOC code necessary to restore the value. 
     """
-    global PrToVr, VrToPr
-    print("loadI %d => r%d // restore" % (get_spill_addr(vr), k))
-    print("load r%d => r%d // restore" % (k, pr))
+    global PrToVr, VrToPr, spilled_bits, Remat_Map
     PrToVr[pr] = vr
     VrToPr[vr] = pr
+    # if (spilled_bits & (1 << vr)) == 0:
+    #     # rematerialize the value
+    #     print("loadI %d => r%d // remat vr%d" % (Remat_Map[vr], pr, vr))
+    # else:
+    print("loadI %d => r%d // restore" % (get_spill_addr(vr), k))
+    print("load r%d => r%d // restore vr%d" % (k, pr, PrToVr[pr]))
+
 
 def reg_alloc():
     """
@@ -620,6 +672,7 @@ def reg_alloc():
     :return: 
     """
     # note: structure of registers in IR is <SR, VR, PR, NU>
+    # global MAX_VR, MAXLIVE, k, IrHead, pr_queue, VrToPr, PrToVr, PrNu, Remat_Map
     global MAX_VR, MAXLIVE, k, IrHead, pr_queue, VrToPr, PrToVr, PrNu
 
     for i in range(MAX_VR + 1):
@@ -640,14 +693,17 @@ def reg_alloc():
         curr_arr = curr.ir_data
         opcode = curr.opcode
         # print(get_used(opcode))
+        # if curr_arr[1] == 34:
+        #     print("found problem line")
 
         for i in get_used(opcode):
             # TODO: CHECK THIS!!!
             # iterate through the uses and allocate
-            if VrToPr[curr_arr[i + 1]] == -1:
+            this_pr = VrToPr[curr_arr[i + 1]]
+            if this_pr == -1:
             # if curr_arr[i + 2] == None:
                 # we assign a PR to those operations that don't have
-                curr_arr[i + 2] = getAPR(curr_arr[i + 1], curr_arr[i + 3])
+                curr_arr[i + 2] = getAPR(curr_arr[i + 1], curr_arr[i + 3]) # TODO: THIS IS REDUNDANT  --> CHANGE!!
                 restore(curr_arr[i + 1], curr_arr[i + 2])
                 # TODO: check this usage of restore!!!!!
             curr_arr[i + 2] = VrToPr[curr_arr[i + 1]]
@@ -656,20 +712,47 @@ def reg_alloc():
             # check if this is the last use
             # reiterate over the uses and re-checks if any of them are
                 # the last use of the VR. if so we free the PR
-            if curr_arr[i + 3] == -1:
+            this_nu = curr_arr[i + 3]
+            if this_nu == -1:
                 #check if this is the last use of this register and free if so
                 free_pr = curr_arr[i + 2]
                 freeAPR(free_pr)
+
+        # if opcode == 2:
+        #     # loadI
+        #     # if curr_arr[i + 3] == -1: # TODO!
+        #         # make a record to load this at the end of the ILOC
+        #         # i.e. remove it from the DLL and add to another DDL
+        #     if curr_arr[11] - line_num > 1:
+        #         check_pr_vr()
+        #         Remat_Map[curr_arr[9]] = curr_arr[0]
+        #         # we set up for a value to be rematerialized
+        #         curr = curr.next
+        #         continue
+        # todo: bring back the above rematerialization!!!
 
         for i in get_defined(opcode):
             # allocate definitions
             # if verbose:
             #     print_operation(curr, 1)
             curr_arr[i + 2] = getAPR(curr_arr[i + 1], curr_arr[i + 3])
+        for i in get_defined(opcode): # todo: maybe check if this definition has any next uses
+            this_nu = curr_arr[i + 3]
+            if this_nu == -1:
+                #check if this is the last use of this register and free if so
+                free_pr = curr_arr[i + 2]
+                freeAPR(free_pr)
+
         print_operation(curr, 2)
         check_pr_vr()
         curr = curr.next
-    # TODO: note -- are we going to do rematerialization??
+
+
+############################################################
+
+        ####### ALL LAB 1 CODE IS BELOW #######
+
+####################################################
 
 def init_double_buf():
     """
@@ -803,8 +886,6 @@ def skip_comment():
     next_char()
     while char != "\n" and char != "":
         next_char()
-
-
 
 def is_number(s):
     """
