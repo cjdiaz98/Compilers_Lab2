@@ -34,8 +34,11 @@ VrToPr = []
 PrToVr = []
 PrNu = []
 pr_stack = []  # stack of free PRs
+
 spilled_bits = 0
 clean_memory_bits = 0
+rematerializable_bits = 0
+
 Vr_Mem_Map = {}
 # map from a VR to the primary memory address that its value is located in
 
@@ -47,6 +50,10 @@ operations = ["load", "store", "loadI", "add", "sub", "mult",
               "lshift", "rshift", "output", "nop", "constant", "register",
               "comma", "into", "endfile"]
 
+
+# NOTE: EVERYTIME YOU START TESTING, LOOK FOR TODO'S IN THE CODE
+# AND UNCOMMENT THOSE FUNCTION CALLS WHCIH ALLOW YOU TO CHECK THE
+# CONSISTENCY OF OUR REGISTERS
 
 # queue of infinite size
 
@@ -354,7 +361,7 @@ def rename():
     if MAXLIVE > k:
         if verbose:
             print(
-            "need to reserve a spill register. Only have %d now" % (k - 1))
+                "need to reserve a spill register. Only have %d now" % (k - 1))
         k -= 1
         # we have to reserve a pr for spilling
 
@@ -482,7 +489,7 @@ def getAPR(vr, nu):
         # note: x is a physical register
         # if verbose:
         #     print("queue is empty")
-        check_all_pr_mapped()  # TODO: remove this!
+        # check_all_pr_mapped()  # TODO: remove this!
         x = find_spill_then_spill()
 
     # print("vr %d" % vr)
@@ -610,9 +617,8 @@ def check_memory_addr(pr):
     global PrToVr, clean_memory_bits
     vr = PrToVr[pr]
     if (clean_memory_bits & (1 << vr)) > 0:
-        return Vr_Mem_Map[vr]
-    else:
-        return -1
+        return True
+    return False
 
 
 def get_clean_primary_mem(line_num):
@@ -658,19 +664,33 @@ def get_clean_primary_mem(line_num):
     max_nu = -1
 
     for i in range(len(PrToVr)):
-        vr = check_memory_addr(i)
-        if vr != -1:
+        if check_memory_addr(i):
             # consider this vr as potential candidate
-            if PrNu[i] < next_store and (PrNu[i] > max_nu or max_nu == -1):
-                farthest_pr = -1
+            if PrNu[i] < next_store and (PrNu[i] > max_nu or PrNu[i] == -1):
+                farthest_pr = i
                 max_nu = PrNu[i]
 
+    # if we couldn't find a good physical register, then there's a chance
+    # that any of the VR's could have been dirtied --> we reflect this
     if farthest_pr == -1:
         Vr_Mem_Map = {}
         clean_memory_bits = 0
     return farthest_pr
     # wipe all trace of vr clean memory
     # we assume that a store automatically dirties all memory addresses
+
+
+def check_rematerializable(pr):
+    """
+    Given a physical register will check if the VR corresponding to that VR
+    is rematerializable. 
+
+    :param pr: 
+    :return: True or False value
+    """
+    global PrToVr, rematerializable_bits
+    vr = PrToVr[pr]
+    return (rematerializable_bits & (1 << vr)) > 0
 
 
 def freeAPR(pr):
@@ -773,6 +793,10 @@ def unmap_pr(x):
 
 def restore(vr, pr):
     """
+    Three different values we can restore:
+        -rematerializable
+        -clean in primary memory
+        -clean in spill memory
 
     :param vr: virtual register which we're trying to restore 
     :param pr: physical register corresponding to this vr. 
@@ -780,16 +804,21 @@ def restore(vr, pr):
     Nothing. 
     Will print out the ILOC code necessary to restore the value. 
     """
-    global PrToVr, VrToPr, spilled_bits, Remat_Map
+    global PrToVr, VrToPr, spilled_bits, Remat_Map, \
+        rematerializable_bits, Vr_Mem_Map
     PrToVr[pr] = vr
     VrToPr[vr] = pr
-    if (spilled_bits & (1 << vr)) == 0:
+    if check_rematerializable(pr):
         # rematerialize the value
         print("loadI %d => r%d // remat vr%d" % (Remat_Map[vr], pr, vr))
-
+        return
+    elif check_memory_addr(x) != -1:
+        print("loadI %d => r%d // restore from primary mem"
+              % (Vr_Mem_Map[vr], k))
     else:
-        print("loadI %d => r%d // restore" % (get_spill_addr(vr), k))
-        print("load r%d => r%d // restore vr%d" % (k, pr, PrToVr[pr]))
+        print("loadI %d => r%d // restore from spill mem"
+              % (get_spill_addr(vr), k))
+    print("load r%d => r%d // restore vr%d" % (k, pr, PrToVr[pr]))
 
 
 def reg_alloc():
@@ -798,7 +827,8 @@ def reg_alloc():
     :return: 
     """
     # note: structure of registers in IR is <SR, VR, PR, NU>
-    global MAX_VR, MAXLIVE, k, IrHead, pr_stack, VrToPr, PrToVr, PrNu, Remat_Map, line_num
+    global MAX_VR, MAXLIVE, k, IrHead, pr_stack, VrToPr, \
+        PrToVr, PrNu, Remat_Map, line_num, rematerializable_bits
 
     for i in range(MAX_VR + 1):
         VrToPr.append(-1)
@@ -848,12 +878,12 @@ def reg_alloc():
             # make a record to load this at the end of the ILOC
             # i.e. remove it from the DLL and add to another DDL
             if curr_arr[11] - line_num > 1:
-                check_pr_vr()
+                # check_pr_vr() # todo: uncomment for debugging
                 Remat_Map[curr_arr[9]] = curr_arr[0]
+                rematerializable_bits = rematerializable_bits | (1 << PrToVr[x])
                 # we set up for a value to be rematerialized
                 curr = curr.next
                 continue
-        # todo: bring back the above rematerialization!!! only when passed CC2
 
         for i in get_defined(opcode):
             # allocate definitions
@@ -869,7 +899,7 @@ def reg_alloc():
                 freeAPR(free_pr)
 
         print_operation(curr, 2)
-        check_pr_vr()
+        # check_pr_vr() # todo!
         curr = curr.next
 
 
@@ -1607,7 +1637,7 @@ def finish_arithop(token_list):
         print(
             "ARITHOP operation on line %d is of incorrect length %d: should be in format: \n"
             "ARITHOP REG COMMA REG INTO REG" % (
-            token_list[0][0], len(token_list)))
+                token_list[0][0], len(token_list)))
         syntax_errors += 1
         return None
 
