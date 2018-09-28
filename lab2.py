@@ -215,10 +215,10 @@ def main():
 
     if is_number(sys.argv[1]):
         k = int(sys.argv[1])
-        flag_level = 2
+        flag_level = 3
 
     if "-l" in sys.argv:
-        flag_level = 2
+        flag_level = 3
         numFlags += 1
         # added flag --> will print out the max live range.
     if "-x" in sys.argv:
@@ -543,7 +543,7 @@ def find_spill_then_spill():
         clean_pr = farthest_spilled
 
     if clean_pr == -1:
-        spill(pr)
+        spill(pr)  # we have to use a dirty value
         return pr
 
     clean_pr = max(farthest_spilled, farthest_primary)
@@ -583,7 +583,7 @@ def get_clean_spill():
 
     # find the farthest general pr thru a linear scan
     for i in range(len(PrNu)):
-        if PrNu[i] > curr_max and check_spill_addr(pr):
+        if PrNu[i] > curr_max and check_spill_addr(i):
             curr_max = PrNu[i]
             pr = i
     return pr
@@ -615,6 +615,8 @@ def check_memory_addr(pr):
     -1 to indicate not in memory 
     """
     global PrToVr, clean_memory_bits
+    return False  ## todo: remove!!
+
     vr = PrToVr[pr]
     if (clean_memory_bits & (1 << vr)) > 0:
         return True
@@ -648,7 +650,7 @@ def get_clean_primary_mem(line_num):
         will reset all known clean vr values and the map
     """
     global clean_memory_bits, Vr_Mem_Map, StoreStack, PrToVr, VrToPr, PrNu
-
+    return -1  # todo: remove!!!
     if clean_memory_bits == 0:
         # no clean VR's
         return -1
@@ -705,6 +707,17 @@ def freeAPR(pr):
     PrToVr[pr] = -1
     PrNu[pr] = -1
     pr_stack.append(pr)
+
+
+def record_values(ir_entry):
+    """"""
+    # TODO!! you're gonna need another map for this
+    # do only if you're using primary memory values
+
+
+def mark_primary_mem(value, vr):
+    """"""
+    # TODO:
 
 
 def get_defined(opcode):
@@ -812,7 +825,7 @@ def restore(vr, pr):
         # rematerialize the value
         print("loadI %d => r%d // remat vr%d" % (Remat_Map[vr], pr, vr))
         return
-    elif check_memory_addr(x) != -1:
+    elif check_memory_addr(pr):
         print("loadI %d => r%d // restore from primary mem"
               % (Vr_Mem_Map[vr], k))
     else:
@@ -828,7 +841,7 @@ def reg_alloc():
     """
     # note: structure of registers in IR is <SR, VR, PR, NU>
     global MAX_VR, MAXLIVE, k, IrHead, pr_stack, VrToPr, \
-        PrToVr, PrNu, Remat_Map, line_num, rematerializable_bits
+        PrToVr, PrNu, Remat_Map, line_num, rematerializable_bits, Vr_Mem_Map
 
     for i in range(MAX_VR + 1):
         VrToPr.append(-1)
@@ -880,10 +893,15 @@ def reg_alloc():
             if curr_arr[11] - line_num > 1:
                 # check_pr_vr() # todo: uncomment for debugging
                 Remat_Map[curr_arr[9]] = curr_arr[0]
-                rematerializable_bits = rematerializable_bits | (1 << PrToVr[x])
+                rematerializable_bits = rematerializable_bits | (
+                1 << curr_arr[9])
                 # we set up for a value to be rematerialized
                 curr = curr.next
                 continue
+
+                # if opcode == 0:
+                # load operation --> just want to record primary memory address
+                # todo: only if primary memory
 
         for i in get_defined(opcode):
             # allocate definitions
