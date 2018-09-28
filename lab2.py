@@ -46,10 +46,12 @@ Remat_Map = {}
 # map from VR to its stored literal value
 
 StoreStack = deque()  # contains line numbers of all store operations
+
+LoadI_Head = None
+
 operations = ["load", "store", "loadI", "add", "sub", "mult",
               "lshift", "rshift", "output", "nop", "constant", "register",
               "comma", "into", "endfile"]
-
 
 # NOTE: EVERYTIME YOU START TESTING, LOOK FOR TODO'S IN THE CODE
 # AND UNCOMMENT THOSE FUNCTION CALLS WHCIH ALLOW YOU TO CHECK THE
@@ -65,7 +67,8 @@ operations = ["load", "store", "loadI", "add", "sub", "mult",
 class IRArray:
     def __init__(self, opcode, int1, int2, int3):
         """
-
+        Initializes a doubly linked list
+        
         :param opcode: The operation code 
         :param int1: the value for the first argument to the operation.
         :param int2: the value for the second argument to the operation.
@@ -176,6 +179,31 @@ class IRArray:
             output += ":[ %d ] " % self.ir_data[11]
         return output
 
+    def remove_self(self):
+        """
+        Appropriately removes this node and updates the 
+        head and tail of DLL
+        
+        Note: this is only to be used by the main DLL of our allocator. 
+        :return: 
+        """
+        global IrHead, IrTail
+        if not self.prev and not self.next:
+            IrTail = None
+            IrHead = None
+
+        if self.prev == None:
+            self.next.prev = None
+            IrHead = self.next
+            return
+        if self.next == None:
+            self.prev.next = None
+            IrTail = self.prev
+            return
+
+        self.next.prev = self.prev
+        self.prev.next = self.next
+
 
 def print_ir():
     """
@@ -209,7 +237,7 @@ def main():
     -scan, parse, and print out the intermediate representation
     :return: 
     """
-    global verbose, flag_level, f, char, EOF, k, MAXLIVE
+    global verbose, flag_level, f, char, EOF, k, MAXLIVE, IrHead
     numArgs = len(sys.argv)
     numFlags = 0  # counts how many of provided args are flags
 
@@ -274,7 +302,7 @@ def main():
         print("//SIM INPUT:")
         print("//OUTPUT:")
         # print("//SIM INPUT: -r %d" % k)
-        reg_alloc()
+        reg_alloc(IrHead)
         # construct the IR
 
 
@@ -361,7 +389,7 @@ def rename():
     if MAXLIVE > k:
         if verbose:
             print(
-                "need to reserve a spill register. Only have %d now" % (k - 1))
+            "need to reserve a spill register. Only have %d now" % (k - 1))
         k -= 1
         # we have to reserve a pr for spilling
 
@@ -543,7 +571,7 @@ def find_spill_then_spill():
         clean_pr = farthest_spilled
 
     if clean_pr == -1:
-        spill(pr)  # we have to use a dirty value
+        spill(pr) # we have to use a dirty value
         return pr
 
     clean_pr = max(farthest_spilled, farthest_primary)
@@ -615,7 +643,7 @@ def check_memory_addr(pr):
     -1 to indicate not in memory 
     """
     global PrToVr, clean_memory_bits
-    return False  ## todo: remove!!
+    return False ## todo: remove!!
 
     vr = PrToVr[pr]
     if (clean_memory_bits & (1 << vr)) > 0:
@@ -650,7 +678,7 @@ def get_clean_primary_mem(line_num):
         will reset all known clean vr values and the map
     """
     global clean_memory_bits, Vr_Mem_Map, StoreStack, PrToVr, VrToPr, PrNu
-    return -1  # todo: remove!!!
+    return -1 # todo: remove!!!
     if clean_memory_bits == 0:
         # no clean VR's
         return -1
@@ -681,19 +709,17 @@ def get_clean_primary_mem(line_num):
     # wipe all trace of vr clean memory
     # we assume that a store automatically dirties all memory addresses
 
-
 def check_rematerializable(pr):
     """
     Given a physical register will check if the VR corresponding to that VR
     is rematerializable. 
-
+    
     :param pr: 
     :return: True or False value
     """
     global PrToVr, rematerializable_bits
     vr = PrToVr[pr]
     return (rematerializable_bits & (1 << vr)) > 0
-
 
 def freeAPR(pr):
     """
@@ -708,17 +734,22 @@ def freeAPR(pr):
     PrNu[pr] = -1
     pr_stack.append(pr)
 
-
 def record_values(ir_entry):
     """"""
     # TODO!! you're gonna need another map for this
-    # do only if you're using primary memory values
+    # global Vr_Val_Map
+    # opcode = ir_entry.opcode
+    # if opcode == 3:
+    #
+    # if opcode == 4:
+    #
+    # if opcode == 5:
 
+    # do only if you're using primary memory values
 
 def mark_primary_mem(value, vr):
     """"""
     # TODO:
-
 
 def get_defined(opcode):
     """
@@ -763,7 +794,6 @@ def get_used(opcode):
         return [0]
     else:
         return [0, 4]
-
 
 def spill(x):
     """
@@ -810,7 +840,7 @@ def restore(vr, pr):
         -rematerializable
         -clean in primary memory
         -clean in spill memory
-
+    
     :param vr: virtual register which we're trying to restore 
     :param pr: physical register corresponding to this vr. 
     :return: 
@@ -833,14 +863,28 @@ def restore(vr, pr):
               % (get_spill_addr(vr), k))
     print("load r%d => r%d // restore vr%d" % (k, pr, PrToVr[pr]))
 
+def insert_loadi_list(list_node):
+    """"""
+    global LoadI_Head, LoadI_Tail
+    if not LoadI_Head:
+        LoadI_Head = list_node
+        LoadI_Tail = list_node
+        list_node.next = None
+        list_node.prev = None
+    else:
+        LoadI_Tail.link_next(list_node)
 
-def reg_alloc():
+def alloc_remaining_loadI():
+    global LoadI_Head, Pr
+
+def reg_alloc(ListHead):
     """
-
+    :param ListHead -- the head of the IR which we want to print out
     :return: 
+    
     """
     # note: structure of registers in IR is <SR, VR, PR, NU>
-    global MAX_VR, MAXLIVE, k, IrHead, pr_stack, VrToPr, \
+    global MAX_VR, MAXLIVE, k, pr_stack, VrToPr, \
         PrToVr, PrNu, Remat_Map, line_num, rematerializable_bits, Vr_Mem_Map
 
     for i in range(MAX_VR + 1):
@@ -851,8 +895,9 @@ def reg_alloc():
         PrNu.append(-1)  # -1 represents infinity
         pr_stack.append(i)
         # push pr onto the queue
+
     line_num = 0
-    curr = IrHead
+    curr = ListHead
     while curr != None:
         line_num += 1
         get_clean_primary_mem(line_num)  # update clean memory records
@@ -893,15 +938,16 @@ def reg_alloc():
             if curr_arr[11] - line_num > 1:
                 # check_pr_vr() # todo: uncomment for debugging
                 Remat_Map[curr_arr[9]] = curr_arr[0]
-                rematerializable_bits = rematerializable_bits | (
-                1 << curr_arr[9])
+                rematerializable_bits = rematerializable_bits | (1 << curr_arr[9])
                 # we set up for a value to be rematerialized
+                curr.remove_self()
                 curr = curr.next
                 continue
 
-                # if opcode == 0:
-                # load operation --> just want to record primary memory address
-                # todo: only if primary memory
+        # if opcode == 0:
+            # load operation --> just want to record primary memory address
+            # todo: only if primary memory
+
 
         for i in get_defined(opcode):
             # allocate definitions
@@ -917,7 +963,7 @@ def reg_alloc():
                 freeAPR(free_pr)
 
         print_operation(curr, 2)
-        # check_pr_vr() # todo!
+        check_pr_vr() # todo!
         curr = curr.next
 
 
@@ -1655,7 +1701,7 @@ def finish_arithop(token_list):
         print(
             "ARITHOP operation on line %d is of incorrect length %d: should be in format: \n"
             "ARITHOP REG COMMA REG INTO REG" % (
-                token_list[0][0], len(token_list)))
+            token_list[0][0], len(token_list)))
         syntax_errors += 1
         return None
 
