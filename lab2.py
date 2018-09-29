@@ -36,11 +36,19 @@ PrNu = []
 pr_stack = []  # stack of free PRs
 
 spilled_bits = 0
-clean_memory_bits = 0
-rematerializable_bits = 0
+clean_memory_bits = 0 #
+rematerializable_bits = 0 # marks all rematerializable VR's
 
 Vr_Mem_Map = {}
 # map from a VR to the primary memory address that its value is located in
+
+Mem_Val_Map = {}
+# map from a memory address to the value located in it
+
+Vr_Val_Map = {}
+# map from a virtual register to the value located in it
+    # doesn't contain a VR if it doesn't know its value
+
 
 Remat_Map = {}
 # map from VR to its stored literal value
@@ -191,6 +199,7 @@ class IRArray:
         if not self.prev and not self.next:
             IrTail = None
             IrHead = None
+            return
 
         if self.prev == None:
             self.next.prev = None
@@ -302,7 +311,8 @@ def main():
         print("//SIM INPUT:")
         print("//OUTPUT:")
         # print("//SIM INPUT: -r %d" % k)
-        reg_alloc(IrHead)
+        reg_alloc(IrHead, True)
+        alloc_remaining_loadI()
         # construct the IR
 
 
@@ -737,15 +747,46 @@ def freeAPR(pr):
 def record_values(ir_entry):
     """"""
     # TODO!! you're gonna need another map for this
-    # global Vr_Val_Map
-    # opcode = ir_entry.opcode
-    # if opcode == 3:
-    #
-    # if opcode == 4:
-    #
-    # if opcode == 5:
+    global Vr_Val_Map
+    opcode = ir_entry.opcode
+    ir_arr = ir_entry.ir_data
+    # operations = [0 "LOAD", 1 "STORE",2 "LOADI",3 "ADD",4 "SUB", 5"MULT",
+    #               6 "LSHIFT", 7 "RSHIFT", 8 "OUTPUT", 9 "NOP",
+    #               10 "CONSTANT", 11 "REGISTER", 12 "COMMA", 13"INTO", 14"ENDFILE"]
 
-    # do only if you're using primary memory values
+    for i in get_used(opcode):
+        if ir_arr[i + 1] not in Mem_Val_Map:
+            # if we have any ambiguous uses, we return
+            return
+
+    if opcode == 0:
+        Vr_Mem_Map[ir_arr[9]] = Vr_Val_Map[ir_arr[1]]
+        # todo!
+
+    if opcode == 2:
+        Mem_Val_Map[ir_arr[9]] = ir_arr[0]
+
+    # todo: what do we do for memory-type operations
+
+    elif opcode >= 8:
+        return
+
+    elif opcode == 3:
+        Mem_Val_Map[ir_arr[9]] = Mem_Val_Map[ir_arr[5]] + Mem_Val_Map[ir_arr[1]]
+
+    elif opcode == 4:
+        Mem_Val_Map[ir_arr[9]] = Mem_Val_Map[ir_arr[5]] - Mem_Val_Map[ir_arr[1]]
+
+    elif opcode == 5:
+        Mem_Val_Map[ir_arr[9]] = Mem_Val_Map[ir_arr[5]] * Mem_Val_Map[ir_arr[1]]
+
+    elif opcode == 6:
+        Mem_Val_Map[ir_arr[9]] = Mem_Val_Map[ir_arr[1]] << Mem_Val_Map[ir_arr[5]]
+
+    elif opcode == 7:
+        Mem_Val_Map[ir_arr[9]] = Mem_Val_Map[ir_arr[1]] >> Mem_Val_Map[ir_arr[5]]
+
+        # do only if you're using primary memory values
 
 def mark_primary_mem(value, vr):
     """"""
@@ -833,7 +874,6 @@ def unmap_pr(x):
     VrToPr[PrToVr[x]] = -1  # unmap this VR because we're spilling it.
     PrToVr[x] = -1
 
-
 def restore(vr, pr):
     """
     Three different values we can restore:
@@ -866,6 +906,7 @@ def restore(vr, pr):
 def insert_loadi_list(list_node):
     """"""
     global LoadI_Head, LoadI_Tail
+    print(list_node.ir_data) # todo: remove for debugging!!
     if not LoadI_Head:
         LoadI_Head = list_node
         LoadI_Tail = list_node
@@ -873,13 +914,28 @@ def insert_loadi_list(list_node):
         list_node.prev = None
     else:
         LoadI_Tail.link_next(list_node)
+        LoadI_Tail = list_node
+        LoadI_Tail.next = None
 
 def alloc_remaining_loadI():
-    global LoadI_Head, Pr
-
-def reg_alloc(ListHead):
     """
-    :param ListHead -- the head of the IR which we want to print out
+    Will print out all the loadI's which we didn't print out before because
+    they were never used. 
+    
+    Note: these will get printed out after the bulk of the ILOC operations. 
+    :return: 
+    """
+    global LoadI_Head
+    if verbose:
+        print("About to output remaining loadI operations")
+    print("// Adding in all extraneous loadI operations below")
+    reg_alloc(LoadI_Head, False)
+
+
+def reg_alloc(ListHead, defer_loadI):
+    """
+    :param ListHead -- the head of the IR which we want to print out.
+    :param defer_loadI -- True or False indicating whether we want to defer
     :return: 
     
     """
@@ -887,20 +943,12 @@ def reg_alloc(ListHead):
     global MAX_VR, MAXLIVE, k, pr_stack, VrToPr, \
         PrToVr, PrNu, Remat_Map, line_num, rematerializable_bits, Vr_Mem_Map
 
-    for i in range(MAX_VR + 1):
-        VrToPr.append(-1)
-
-    for i in range(k):
-        PrToVr.append(-1)
-        PrNu.append(-1)  # -1 represents infinity
-        pr_stack.append(i)
-        # push pr onto the queue
+    set_for_alloc()
 
     line_num = 0
     curr = ListHead
     while curr != None:
         line_num += 1
-        get_clean_primary_mem(line_num)  # update clean memory records
 
         if verbose:
             print("on line: %d " % line_num)
@@ -908,8 +956,29 @@ def reg_alloc(ListHead):
         curr_arr = curr.ir_data
         opcode = curr.opcode
 
+        if opcode == 2:
+            # Special cases for loadI's
+            if curr_arr[11] == -1 and defer_loadI:
+                # no next use of defined
+                temp_curr = curr
+                curr = curr.next
+                temp_curr.remove_self()
+                insert_loadi_list(temp_curr)
+                continue
+
+            # todo -- might we want to not change the line number if we're not
+                # printing out this loadI?
+            if curr_arr[11] - line_num > 1:
+                if verbose:
+                    print("marking as rematerializable")
+                # check_pr_vr() # todo: uncomment for debugging
+                Remat_Map[curr_arr[9]] = curr_arr[0]
+                rematerializable_bits = rematerializable_bits | (1 << curr_arr[9])
+                # we set up for a value to be rematerialized
+                curr = curr.next
+                continue
+
         for i in get_used(opcode):
-            # TODO: CHECK THIS!!!
             # iterate through the uses and allocate
             this_pr = VrToPr[curr_arr[i + 1]]
             if this_pr == -1:
@@ -918,7 +987,6 @@ def reg_alloc(ListHead):
                 this_pr = getAPR(curr_arr[i + 1], curr_arr[i + 3])
                 restore(curr_arr[i + 1], this_pr)
             curr_arr[i + 2] = this_pr
-            # todo: changed this!
 
         for i in get_used(opcode):
             # check if this is the last use
@@ -929,20 +997,6 @@ def reg_alloc(ListHead):
                 # check if this is the last use of this register and free if so
                 free_pr = curr_arr[i + 2]
                 freeAPR(free_pr)
-
-        if opcode == 2:
-            # loadI
-            # if curr_arr[i + 3] == -1: # TODO!
-            # make a record to load this at the end of the ILOC
-            # i.e. remove it from the DLL and add to another DDL
-            if curr_arr[11] - line_num > 1:
-                # check_pr_vr() # todo: uncomment for debugging
-                Remat_Map[curr_arr[9]] = curr_arr[0]
-                rematerializable_bits = rematerializable_bits | (1 << curr_arr[9])
-                # we set up for a value to be rematerialized
-                curr.remove_self()
-                curr = curr.next
-                continue
 
         # if opcode == 0:
             # load operation --> just want to record primary memory address
@@ -966,6 +1020,24 @@ def reg_alloc(ListHead):
         check_pr_vr() # todo!
         curr = curr.next
 
+def set_for_alloc():
+    """
+    Resets all the appropriate data structures and variables for if we want to
+    run through another allocation
+    :return: 
+    """
+    global PrNu, VrToPr, PrToVr, pr_stack, MAX_VR
+    PrNu = []
+    VrToPr = []
+    PrToVr = []
+    pr_stack = []
+    for i in range(MAX_VR + 1):
+        VrToPr.append(-1)
+
+    for i in range(k):
+        PrToVr.append(-1) # represents no mapping
+        PrNu.append(-1)  # -1 represents infinity
+        pr_stack.append(i) # push free pr's onto stack
 
 ############################################################
 
