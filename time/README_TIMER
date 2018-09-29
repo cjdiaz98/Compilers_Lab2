@@ -1,0 +1,29 @@
+COMP 412, Fall 2014
+Timer for lab 1
+
+To run the timer, you must unpack the tar file into a clean directory, which 
+should leave behind a series of input files, named T*k.i, and an executable
+file, named Timer.
+
+Timer takes a single command-line parameter, the pathname of your allocator.  
+Test the pathname by typing it into a shell; that will reveal some problems.  
+For example, my shell path does not include ".", so I would need to use 
+the filename "./412alloc" instead of "412alloc".
+
+To test "myalloc", I would type:
+
+   ./Timer ./myalloc
+
+In response, the timer would first run the reference allocator on the input
+files and report the amount of time that it consumes.  Next, it would run
+the allocator "./myalloc" on the same files, reporting the amount of time
+that "./myalloc" consumed on each of the input files.
+
+The timer will exit if any individual run exceeds five minutes (300 seconds).
+If you see that behavior, it is a strong indicator that your lab contains 
+one or more algorithms that have complexity greater than O(n). You should 
+invest time to find those components and improve or replace them.
+
+Note that ./Timer runs the lab 1 referencec allocator with the -c option, 
+which turns off its extensive comment generation.  Comment generation accounts
+for about 1/3 of the reference allocator's runtime.

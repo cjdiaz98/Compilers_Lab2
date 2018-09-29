@@ -36,19 +36,7 @@ PrNu = []
 pr_stack = []  # stack of free PRs
 
 spilled_bits = 0
-clean_memory_bits = 0 #
 rematerializable_bits = 0 # marks all rematerializable VR's
-
-Vr_Mem_Map = {}
-# map from a VR to the primary memory address that its value is located in
-
-Mem_Val_Map = {}
-# map from a memory address to the value located in it
-
-Vr_Val_Map = {}
-# map from a virtual register to the value located in it
-    # doesn't contain a VR if it doesn't know its value
-
 
 Remat_Map = {}
 # map from VR to its stored literal value
@@ -562,9 +550,8 @@ def find_spill_then_spill():
     # else we wouldn't be here
     curr_max = -1
     pr = -1
-    # find the farthest clean pr, both for spilled and primary memory
-    farthest_spilled = get_clean_spill()
-    farthest_primary = get_clean_primary_mem(line_num)
+    # find the farthest clean pr for spilled memory
+    clean_pr = get_clean_spill()
 
     # find the farthest general pr thru a linear scan
     for i in range(len(PrNu)):
@@ -574,17 +561,9 @@ def find_spill_then_spill():
     if verbose:
         print("found spill: %d" % pr)
 
-    clean_pr = -1
-    if farthest_spilled == -1:
-        clean_pr = farthest_primary
-    if farthest_primary == -1:
-        clean_pr = farthest_spilled
-
     if clean_pr == -1:
         spill(pr) # we have to use a dirty value
         return pr
-
-    clean_pr = max(farthest_spilled, farthest_primary)
 
     if PrNu[clean_pr] < 4 + PrNu[pr]:
         # this heuristic was pretty arbitrarily chosen
@@ -630,7 +609,7 @@ def get_clean_spill():
 def check_spill_addr(pr):
     """
     Check if the value has already been spilled
-    :param vr: primary register we're trying to spill 
+    :param vr: register we're trying to spill 
     :return: Returns boolean value
     """
     global PrToVr, spilled_bits
@@ -640,84 +619,6 @@ def check_spill_addr(pr):
     else:
         return False
 
-
-def check_memory_addr(pr):
-    """
-    Will check if the associated virtual register is a clean value -- 
-    particularly if it has its value loaded into memory. 
-
-    If so return the memory address of the virtual register associated with that
-    physical register.
-    :param pr: 
-    :return: 
-    -1 to indicate not in memory 
-    """
-    global PrToVr, clean_memory_bits
-    return False ## todo: remove!!
-
-    vr = PrToVr[pr]
-    if (clean_memory_bits & (1 << vr)) > 0:
-        return True
-    return False
-
-
-def get_clean_primary_mem(line_num):
-    """
-    Takes in:
-    the current line number.  
-
-    Invoked everytime that we need to get a PR and are are considering 
-    whether we want to see if any VR's are in primary memory addresses
-
-    Will consider the next store function that 
-    appears on a line >= current line number
-
-    :return: 
-        Tells us of the current physical registers whose values are stored in
-        primary memory addresses, which ones can we restore later on and know 
-        to be completely clean (i.e. there is no store operation between then and now). 
-        It will pick the farthest used of all such VR's, 
-        and return its corresponding PR. 
-        Otherwise, it'll return -1 to indicate that no such PR exists. 
-
-    Side effects: 
-        we'll keep popping stores off of the queue until we hit one which has 
-        yet to happen (>= line number).
-
-        If not able to find a qualifying PR, 
-        will reset all known clean vr values and the map
-    """
-    global clean_memory_bits, Vr_Mem_Map, StoreStack, PrToVr, VrToPr, PrNu
-    return -1 # todo: remove!!!
-    if clean_memory_bits == 0:
-        # no clean VR's
-        return -1
-
-    next_store = StoreStack[0]
-    while StoreStack and StoreStack[0] < line_num:
-        StoreStack.pop()  # see next element
-        next_store = StoreStack[0]
-    if len(StoreStack) == 0:
-        next_store = -1
-
-    farthest_pr = -1
-    max_nu = -1
-
-    for i in range(len(PrToVr)):
-        if check_memory_addr(i):
-            # consider this vr as potential candidate
-            if PrNu[i] < next_store and (PrNu[i] > max_nu or PrNu[i] == -1):
-                farthest_pr = i
-                max_nu = PrNu[i]
-
-    # if we couldn't find a good physical register, then there's a chance
-    # that any of the VR's could have been dirtied --> we reflect this
-    if farthest_pr == -1:
-        Vr_Mem_Map = {}
-        clean_memory_bits = 0
-    return farthest_pr
-    # wipe all trace of vr clean memory
-    # we assume that a store automatically dirties all memory addresses
 
 def check_rematerializable(pr):
     """
@@ -743,54 +644,6 @@ def freeAPR(pr):
     PrToVr[pr] = -1
     PrNu[pr] = -1
     pr_stack.append(pr)
-
-def record_values(ir_entry):
-    """"""
-    # TODO!! you're gonna need another map for this
-    global Vr_Val_Map
-    opcode = ir_entry.opcode
-    ir_arr = ir_entry.ir_data
-    # operations = [0 "LOAD", 1 "STORE",2 "LOADI",3 "ADD",4 "SUB", 5"MULT",
-    #               6 "LSHIFT", 7 "RSHIFT", 8 "OUTPUT", 9 "NOP",
-    #               10 "CONSTANT", 11 "REGISTER", 12 "COMMA", 13"INTO", 14"ENDFILE"]
-
-    for i in get_used(opcode):
-        if ir_arr[i + 1] not in Mem_Val_Map:
-            # if we have any ambiguous uses, we return
-            return
-
-    if opcode == 0:
-        Vr_Mem_Map[ir_arr[9]] = Vr_Val_Map[ir_arr[1]]
-        # todo!
-
-    if opcode == 2:
-        Mem_Val_Map[ir_arr[9]] = ir_arr[0]
-
-    # todo: what do we do for memory-type operations
-
-    elif opcode >= 8:
-        return
-
-    elif opcode == 3:
-        Mem_Val_Map[ir_arr[9]] = Mem_Val_Map[ir_arr[5]] + Mem_Val_Map[ir_arr[1]]
-
-    elif opcode == 4:
-        Mem_Val_Map[ir_arr[9]] = Mem_Val_Map[ir_arr[5]] - Mem_Val_Map[ir_arr[1]]
-
-    elif opcode == 5:
-        Mem_Val_Map[ir_arr[9]] = Mem_Val_Map[ir_arr[5]] * Mem_Val_Map[ir_arr[1]]
-
-    elif opcode == 6:
-        Mem_Val_Map[ir_arr[9]] = Mem_Val_Map[ir_arr[1]] << Mem_Val_Map[ir_arr[5]]
-
-    elif opcode == 7:
-        Mem_Val_Map[ir_arr[9]] = Mem_Val_Map[ir_arr[1]] >> Mem_Val_Map[ir_arr[5]]
-
-        # do only if you're using primary memory values
-
-def mark_primary_mem(value, vr):
-    """"""
-    # TODO:
 
 def get_defined(opcode):
     """
@@ -878,7 +731,7 @@ def restore(vr, pr):
     """
     Three different values we can restore:
         -rematerializable
-        -clean in primary memory
+        -clean in primary memory (not supported anymore)
         -clean in spill memory
     
     :param vr: virtual register which we're trying to restore 
@@ -895,9 +748,6 @@ def restore(vr, pr):
         # rematerialize the value
         print("loadI %d => r%d // remat vr%d" % (Remat_Map[vr], pr, vr))
         return
-    elif check_memory_addr(pr):
-        print("loadI %d => r%d // restore from primary mem"
-              % (Vr_Mem_Map[vr], k))
     else:
         print("loadI %d => r%d // restore from spill mem"
               % (get_spill_addr(vr), k))
@@ -998,11 +848,6 @@ def reg_alloc(ListHead, defer_loadI):
                 free_pr = curr_arr[i + 2]
                 freeAPR(free_pr)
 
-        # if opcode == 0:
-            # load operation --> just want to record primary memory address
-            # todo: only if primary memory
-
-
         for i in get_defined(opcode):
             # allocate definitions
             # if verbose:
@@ -1017,7 +862,7 @@ def reg_alloc(ListHead, defer_loadI):
                 freeAPR(free_pr)
 
         print_operation(curr, 2)
-        check_pr_vr() # todo!
+        # check_pr_vr() # todo!
         curr = curr.next
 
 def set_for_alloc():
