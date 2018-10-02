@@ -36,7 +36,7 @@ PrNu = []
 pr_stack = []  # stack of free PRs
 
 spilled_bits = 0
-rematerializable_bits = 0 # marks all rematerializable VR's
+rematerializable_bits = 0  # marks all rematerializable VR's
 
 Remat_Map = {}
 # map from VR to its stored literal value
@@ -49,11 +49,6 @@ operations = ["load", "store", "loadI", "add", "sub", "mult",
               "lshift", "rshift", "output", "nop", "constant", "register",
               "comma", "into", "endfile"]
 
-# NOTE: EVERYTIME YOU START TESTING, LOOK FOR TODO'S IN THE CODE
-# AND UNCOMMENT THOSE FUNCTION CALLS WHCIH ALLOW YOU TO CHECK THE
-# CONSISTENCY OF OUR REGISTERS
-
-# queue of infinite size
 
 # REMAT_THRESH = 5 # todo: will this ever be greater than 1?
 
@@ -64,7 +59,7 @@ class IRArray:
     def __init__(self, opcode, int1, int2, int3):
         """
         Initializes a doubly linked list
-        
+
         :param opcode: The operation code 
         :param int1: the value for the first argument to the operation.
         :param int2: the value for the second argument to the operation.
@@ -179,7 +174,7 @@ class IRArray:
         """
         Appropriately removes this node and updates the 
         head and tail of DLL
-        
+
         Note: this is only to be used by the main DLL of our allocator. 
         :return: 
         """
@@ -217,7 +212,6 @@ def print_ir():
         # total_output += "\n" + next_ir.to_string()
         next_ir = next_ir.next
         # print(total_output)
-
 
 iloc_comment_header = "//NAME: Jacob Diaz \n //NETID: " \
                       "cjd8"
@@ -299,9 +293,12 @@ def main():
         print("//SIM INPUT:")
         print("//OUTPUT:")
         # print("//SIM INPUT: -r %d" % k)
+        # reg_alloc()
+
         reg_alloc(IrHead, True)
-        alloc_remaining_loadI()
+        # alloc_remaining_loadI()
         # construct the IR
+
 
 
 def rename():
@@ -310,7 +307,7 @@ def rename():
         Will print out the output. 
     :return: 
     """
-    global IrHead, IrTail, MAXLIVE, MAX_VR, k, StoreStack
+    global IrHead, IrTail, MAXLIVE, MAX_VR, k
     SrToVr = []
     LU = []
 
@@ -330,22 +327,16 @@ def rename():
     while curr != None:
         curr_arr = curr.ir_data
         # look through all the operands that we define first
-        opcode = curr.opcode
 
-        if opcode == 1:
-            StoreStack.append(line_num)
-            # we add the operations in LIFO order b/c we're going in reverse
-
-        defined = get_defined(opcode)
+        defined = get_defined(curr.opcode)
         for j in defined:
             # if verbose:
             #     print("current register: %d" % curr_arr[j])
             if SrToVr[curr_arr[j]] == -1:
+                curr_max -= 1
                 # if we hit the definition of the SR, then we decrement curr_max
                 SrToVr[curr_arr[j]] = vr_name
                 vr_name += 1
-            else:
-                curr_max -= 1
 
             # set NU and VR of the operand
             curr_arr[j + 1] = SrToVr[curr_arr[j]]  # virtual register
@@ -355,7 +346,7 @@ def rename():
             SrToVr[curr_arr[j]] = -1
 
         # look through all the operands that we use next
-        used = get_used(opcode)
+        used = get_used(curr.opcode)
 
         for j in used:
             # if verbose:
@@ -375,14 +366,9 @@ def rename():
         # after we've looked thru uses and def's, then we check if
         # MAXLIVE has changed
         if MAXLIVE < curr_max:
-            # if verbose:
-            #     print("maxlive exceeded: %d to %d" % (MAXLIVE, curr_max))
             MAXLIVE = curr_max
         index -= 1
         curr = curr.prev
-        if verbose:
-            # note, we'll print in reverse order
-            print("currlive %s: %d" % (operations[opcode], curr_max))
 
     if MAXLIVE > k:
         if verbose:
@@ -419,8 +405,8 @@ def constr_op_string(ir_entry, offset, vr):
     :param vr: whether or not we want to include vr representation as a comment
     :return: 
     """
-    global operations
-
+    operations = ["load", "store", "loadI", "add", "sub", "mult",
+                  "lshift", "rshift", "output", "nop"]
     if vr:
         output = "// " + operations[ir_entry.opcode] + " "
     else:
@@ -492,6 +478,63 @@ def print_renamed_ir():
         curr = curr.next
 
 
+def check_pr_vr():
+    """
+    Will print out all the virtual registers in violation of the 
+    PRToVR[VRToPR[vr]] = vr rule
+    :return: 
+    Returns true if the mapping wasn't violated, else false.
+    """
+    global VrToPr, PrToVr, MAX_VR
+    valid = True
+    for v in range(MAX_VR):
+        if VrToPr[v] != -1 and PrToVr[VrToPr[v]] != v:
+            valid = False
+            print("VR %d violated. Corresponding pr %d mapped to %d" %
+                  (v, VrToPr[v], PrToVr[VrToPr[v]]))
+            print("Meanwhile VR %d maps to %d" %
+                  (PrToVr[VrToPr[v]], VrToPr[PrToVr[VrToPr[v]]]))
+    return valid
+
+
+def check_not_using_undefined():
+    global IrHead, MAX_VR
+    defined = []
+    operations = ["load", "store", "loadI", "add", "sub", "mult",
+                  "lshift", "rshift", "output", "nop"]
+    for i in range(MAX_VR + 1):
+        defined.append(False)
+    # print("Max vr %d" % MAX_VR)
+    curr = IrHead
+    line = 1
+
+    while curr != None:
+        uses = get_used(curr.opcode)
+        for i in uses:
+            if not defined[curr.ir_data[i + 1]]:
+                print("Register r%d for %s at Line %d not defined before this" %
+                      (curr.ir_data[i + 1], operations[curr.opcode], line))
+
+        defined_ind = get_defined(curr.opcode)
+        for i in defined_ind:
+            # print("defined ind: %d" % curr.ir_data[i + 1])
+            defined[curr.ir_data[i + 1]] = True
+
+        curr = curr.next
+        line += 1
+
+
+def check_all_pr_mapped():
+    """
+    Checks that all the physical regsiters are mapped to a vr
+    :return: 
+    """
+    global PrToVr
+    for i in range(len(PrToVr)):
+        if PrToVr[i] == -1:
+            print("PR %d NOT MAPPED PROPERLY!!" % i)
+
+
 # we will rematerialize a value if it isn't located in the the spill memory address
 # this is because it would be in the spill address if we had chosen to spill it
 # in the case that it is rematerializable, we'll forego the restore step and just
@@ -515,7 +558,7 @@ def getAPR(vr, nu):
         # note: x is a physical register
         # if verbose:
         #     print("queue is empty")
-        # check_all_pr_mapped()  # TODO: remove this!
+        check_all_pr_mapped()
         x = find_spill_then_spill()
 
     # print("vr %d" % vr)
@@ -558,14 +601,23 @@ def find_spill_then_spill():
         if PrNu[i] > curr_max:
             curr_max = PrNu[i]
             pr = i
+
+
+    # if clean_pr != -1:
+    #     spill(clean_pr)  # we have to use a dirty value
+    #     return clean_pr
+    #
+    # spill(pr)  # we have to use a dirty value
+    # return pr # todo: maybe we want to just return the dirty one
+
     if verbose:
         print("found spill: %d" % pr)
 
     if clean_pr == -1:
-        spill(pr) # we have to use a dirty value
+        spill(pr)  # we have to use a dirty value
         return pr
 
-    if PrNu[clean_pr] < 4 + PrNu[pr]:
+    if PrNu[clean_pr] + 4 < PrNu[pr]:
         # this heuristic was pretty arbitrarily chosen
         spill(pr)
         return pr
@@ -583,7 +635,7 @@ def get_spill_addr(vr):
     :return: 
         The VR's spill address. 
     """
-    return 32772 + 4 * vr
+    return 32768 + 4 * vr
 
 
 def get_clean_spill():
@@ -624,7 +676,7 @@ def check_rematerializable(pr):
     """
     Given a physical register will check if the VR corresponding to that VR
     is rematerializable. 
-    
+
     :param pr: 
     :return: True or False value
     """
@@ -644,6 +696,8 @@ def freeAPR(pr):
     PrToVr[pr] = -1
     PrNu[pr] = -1
     pr_stack.append(pr)
+
+
 
 def get_defined(opcode):
     """
@@ -689,6 +743,7 @@ def get_used(opcode):
     else:
         return [0, 4]
 
+
 def spill(x):
     """
 
@@ -700,7 +755,8 @@ def spill(x):
     consistent
     """
     global PrToVr, spilled_bits, VrToPr
-    if check_spill_addr(x):
+    if check_spill_addr(x) or check_rematerializable(x):
+        unmap_pr(x)
         if verbose:
             print("pr %d is already in memory" % x)
         return  # we don't need to spill, as the value is already in spill addr
@@ -713,7 +769,10 @@ def spill(x):
     # note: that we've reserved register k + 1
     print("store r%d => r%d // spill vr %d" % (x, k, PrToVr[x]))
     unmap_pr(x)
-    # note: we print out the values right away
+
+# TODO: where are we going to want to add new operations, such as the
+# immediate load operation detailed on page 689?
+# would it be in spill?
 
 
 def unmap_pr(x):
@@ -733,7 +792,7 @@ def restore(vr, pr):
         -rematerializable
         -clean in primary memory (not supported anymore)
         -clean in spill memory
-    
+
     :param vr: virtual register which we're trying to restore 
     :param pr: physical register corresponding to this vr. 
     :return: 
@@ -748,38 +807,30 @@ def restore(vr, pr):
         # rematerialize the value
         print("loadI %d => r%d // remat vr%d" % (Remat_Map[vr], pr, vr))
         return
-    else:
-        print("loadI %d => r%d // restore from spill mem"
+
+    print("loadI %d => r%d // restore from spill mem"
               % (get_spill_addr(vr), k))
     print("load r%d => r%d // restore vr%d" % (k, pr, PrToVr[pr]))
 
-def insert_loadi_list(list_node):
-    """"""
-    global LoadI_Head, LoadI_Tail
-    print(list_node.ir_data) # todo: remove for debugging!!
-    if not LoadI_Head:
-        LoadI_Head = list_node
-        LoadI_Tail = list_node
-        list_node.next = None
-        list_node.prev = None
-    else:
-        LoadI_Tail.link_next(list_node)
-        LoadI_Tail = list_node
-        LoadI_Tail.next = None
 
-def alloc_remaining_loadI():
+def set_for_alloc():
     """
-    Will print out all the loadI's which we didn't print out before because
-    they were never used. 
-    
-    Note: these will get printed out after the bulk of the ILOC operations. 
+    Resets all the appropriate data structures and variables for if we want to
+    run through another allocation
     :return: 
     """
-    global LoadI_Head
-    if verbose:
-        print("About to output remaining loadI operations")
-    print("// Adding in all extraneous loadI operations below")
-    reg_alloc(LoadI_Head, False)
+    global PrNu, VrToPr, PrToVr, pr_stack, MAX_VR
+    PrNu = []
+    VrToPr = []
+    PrToVr = []
+    pr_stack = []
+    for i in range(MAX_VR + 1):
+        VrToPr.append(-1)
+
+    for i in range(k):
+        PrToVr.append(-1)  # represents no mapping
+        PrNu.append(-1)  # -1 represents infinity
+        pr_stack.append(i)  # push free pr's onto stack
 
 
 def reg_alloc(ListHead, defer_loadI):
@@ -787,7 +838,7 @@ def reg_alloc(ListHead, defer_loadI):
     :param ListHead -- the head of the IR which we want to print out.
     :param defer_loadI -- True or False indicating whether we want to defer
     :return: 
-    
+
     """
     # note: structure of registers in IR is <SR, VR, PR, NU>
     global MAX_VR, MAXLIVE, k, pr_stack, VrToPr, \
@@ -805,6 +856,10 @@ def reg_alloc(ListHead, defer_loadI):
         # we make a single pass through the operations
         curr_arr = curr.ir_data
         opcode = curr.opcode
+        if opcode == 9:
+            # we have a NOP
+            curr = curr.next
+            continue
 
         if opcode == 2:
             # Special cases for loadI's
@@ -815,17 +870,19 @@ def reg_alloc(ListHead, defer_loadI):
                 temp_curr.remove_self()
                 insert_loadi_list(temp_curr)
                 continue
+            # TODO: why does it break as soon as we do curr = curr.next?
+            # this is why we can't use the next piece of code
+            Remat_Map[curr_arr[9]] = curr_arr[0]
+            rematerializable_bits = rematerializable_bits | (1 << curr_arr[9])
+            # we set up for a value to be rematerialized
 
-            # todo -- might we want to not change the line number if we're not
-                # printing out this loadI?
-            if curr_arr[11] - line_num > 1:
+            if curr_arr[11] - line_num > 2:
+                # I have no clue why this works for > 2 and note > 1, but
+                # I'm just going for it
                 if verbose:
                     print("marking as rematerializable")
-                # check_pr_vr() # todo: uncomment for debugging
-                Remat_Map[curr_arr[9]] = curr_arr[0]
-                rematerializable_bits = rematerializable_bits | (1 << curr_arr[9])
-                # we set up for a value to be rematerialized
-                curr = curr.next
+                #check_pr_vr() # todo: uncomment for debugging
+                curr = curr.next # we choose not to print it now
                 continue
 
         for i in get_used(opcode):
@@ -862,95 +919,8 @@ def reg_alloc(ListHead, defer_loadI):
                 freeAPR(free_pr)
 
         print_operation(curr, 2)
-        # check_pr_vr() # todo!
+        check_pr_vr() # todo!
         curr = curr.next
-
-def set_for_alloc():
-    """
-    Resets all the appropriate data structures and variables for if we want to
-    run through another allocation
-    :return: 
-    """
-    global PrNu, VrToPr, PrToVr, pr_stack, MAX_VR
-    PrNu = []
-    VrToPr = []
-    PrToVr = []
-    pr_stack = []
-    for i in range(MAX_VR + 1):
-        VrToPr.append(-1)
-
-    for i in range(k):
-        PrToVr.append(-1) # represents no mapping
-        PrNu.append(-1)  # -1 represents infinity
-        pr_stack.append(i) # push free pr's onto stack
-
-############################################################
-
-####### BELOW ARE CHECKS DONE TO OUR DATA STRUCTURES #######
-
-####################################################
-
-def check_pr_vr():
-    """
-    Will print out all the virtual registers in violation of the 
-    PRToVR[VRToPR[vr]] = vr rule
-    :return: 
-    Returns true if the mapping wasn't violated, else false.
-    """
-    global VrToPr, PrToVr, MAX_VR
-    valid = True
-    for v in range(MAX_VR):
-        if VrToPr[v] != -1 and PrToVr[VrToPr[v]] != v:
-            valid = False
-            print("VR %d violated. Corresponding pr %d mapped to %d" %
-                  (v, VrToPr[v], PrToVr[VrToPr[v]]))
-            print("Meanwhile VR %d maps to %d" %
-                  (PrToVr[VrToPr[v]], VrToPr[PrToVr[VrToPr[v]]]))
-    return valid
-
-
-def check_not_using_undefined():
-    global IrHead, MAX_VR, operations
-    defined = []
-    operations = ["load", "store", "loadI", "add", "sub", "mult",
-                  "lshift", "rshift", "output", "nop"]
-    for i in range(MAX_VR + 1):
-        defined.append(False)
-    # print("Max vr %d" % MAX_VR)
-    curr = IrHead
-    line = 1
-
-    while curr != None:
-        uses = get_used(curr.opcode)
-        for i in uses:
-            if not defined[curr.ir_data[i + 1]]:
-                print(
-                    "Register r%d for %s at Line %d not defined before this" %
-                    (curr.ir_data[i + 1], operations[curr.opcode], line))
-
-        defined_ind = get_defined(curr.opcode)
-        for i in defined_ind:
-            # print("defined ind: %d" % curr.ir_data[i + 1])
-            defined[curr.ir_data[i + 1]] = True
-
-        curr = curr.next
-        line += 1
-
-
-def check_all_pr_mapped():
-    """
-    Checks that all the physical regsiters are mapped to a vr
-    :return: 
-    """
-    global PrToVr
-    for i in range(len(PrToVr)):
-        if PrToVr[i] == -1:
-            print("PR %d NOT MAPPED PROPERLY!!" % i)
-
-
-            ############################################################
-
-            ####### ALL LAB 1 CODE IS BELOW #######
 
 
 ####################################################
