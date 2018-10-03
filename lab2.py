@@ -1,4 +1,3 @@
-# NOT WORKING!
 import sys
 import math
 from sys import stdin, stdout
@@ -50,8 +49,6 @@ operations = ["load", "store", "loadI", "add", "sub", "mult",
               "lshift", "rshift", "output", "nop", "constant", "register",
               "comma", "into", "endfile"]
 
-
-# REMAT_THRESH = 5 # todo: will this ever be greater than 1?
 
 # keeps track of which virtual registers have been spilled
 # note: we'll only ever add bits to this number
@@ -234,9 +231,17 @@ def main():
     numArgs = len(sys.argv)
     numFlags = 0  # counts how many of provided args are flags
 
+    if len(sys.argv) > 4:
+        print("Note: 412alloc takes 3 arguments:"
+              "412alloc <flag> <filename>")
+        return
+
     if is_number(sys.argv[1]):
         k = int(sys.argv[1])
         flag_level = 3
+        if k < 3:
+            print("k must be at least 3")
+            return
 
     if "-l" in sys.argv:
         flag_level = 3
@@ -255,14 +260,14 @@ def main():
 
     if len(sys.argv) < 3:
         print("Note: 412alloc takes 3 arguments:"
-              "412fe <flag> <filename>")
+              "412alloc <flag> <filename>")
 
     if numFlags > 1:
         print("Note: 412alloc takes only 1 flag:"
-              "412fe <flag> <filename>. You specified %d " % numFlags)
+              "412alloc <flag> <filename>. You specified %d " % numFlags)
 
     if flag_level == 0:
-        print("412alloc.py takes the arguments <k|-x> <filename>")
+        print("412alloc takes the arguments <k|-x> <filename>")
         return
         # print out help statement
 
@@ -1594,11 +1599,6 @@ def finish_memop(token_list):
 
     r1 = None
     r3 = None
-
-    # TODO: print out errors and note the line number
-    # TODO: think about what we want the errors to say.
-    # Do we want to note which argument was wrong?
-    #  or should we just say it was all wrong?
 
     if token_list[1][1] == 11:
         r1 = to_int(token_list[1][2])
