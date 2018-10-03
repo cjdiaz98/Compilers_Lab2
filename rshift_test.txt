@@ -1,1 +1,0 @@
-        rshift     r20, r19        =>r4    // Initialize counter
