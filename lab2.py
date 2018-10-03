@@ -304,9 +304,23 @@ def main():
 
         reg_alloc(IrHead, True)
         # check_no_repeat_vr(IrHead) # todo: comment out when done
-        # alloc_remaining_loadI()
+        alloc_remaining_loadI()
         # construct the IR
 
+
+def alloc_remaining_loadI():
+    """
+    Will print out all the loadI's which we didn't print out before because
+    they were never used. 
+
+    Note: these will get printed out after the bulk of the ILOC operations. 
+    :return: 
+    """
+    global LoadI_Head
+    if verbose:
+        print("About to output remaining loadI operations")
+    print("// Adding in all extraneous loadI operations below")
+    reg_alloc(LoadI_Head, False)
 
 def rename():
     """
@@ -822,6 +836,20 @@ def get_used(opcode):
         return [0]
     else:
         return [0, 4]
+
+def insert_loadi_list(list_node):
+    """"""
+    global LoadI_Head, LoadI_Tail
+    print(list_node.ir_data) # todo: remove for debugging!!
+    if not LoadI_Head:
+        LoadI_Head = list_node
+        LoadI_Tail = list_node
+        list_node.next = None
+        list_node.prev = None
+    else:
+        LoadI_Tail.link_next(list_node)
+        LoadI_Tail = list_node
+        LoadI_Tail.next = None
 
 
 def spill(x):
