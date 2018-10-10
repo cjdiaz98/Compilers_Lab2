@@ -22,6 +22,7 @@ EOF = False
 IrHead = None
 IrTail = None
 verbose = False
+checking = False # flags whether we want to check our data structures during the run
 lex_errors = 0
 syntax_errors = 0
 f = None
@@ -227,7 +228,7 @@ def main():
     -scan, parse, and print out the intermediate representation
     :return: 
     """
-    global verbose, flag_level, f, char, EOF, k, MAXLIVE, IrHead
+    global verbose, flag_level, f, char, EOF, k, MAXLIVE, IrHead, checking
     numArgs = len(sys.argv)
     numFlags = 0  # counts how many of provided args are flags
 
@@ -256,6 +257,9 @@ def main():
     if "-v" in sys.argv:
         print("verbose turned on")
         verbose = True
+        numArgs -= 1
+    if "-c" in sys.argv:
+        checking = True
         numArgs -= 1
 
     if len(sys.argv) < 3:
@@ -303,7 +307,8 @@ def main():
         # reg_alloc()
 
         reg_alloc(IrHead, True)
-        # check_no_repeat_vr(IrHead) # todo: comment out when done
+        if checking:
+            check_no_repeat_vr(IrHead)
         alloc_remaining_loadI()
         # construct the IR
 
@@ -638,7 +643,7 @@ def getAPR(vr, nu,other_pr):
 
     :return: 
     """
-    global VrToPr, PrToVr, PrNu, MAX_VR, pr_stack, line_num
+    global VrToPr, PrToVr, PrNu, MAX_VR, pr_stack, line_num, checking
     # We should always conserve the property VrToPr[VrToPr[vr]] = vr
     # when VrToPr[vr] != invalid
 
@@ -648,7 +653,8 @@ def getAPR(vr, nu,other_pr):
         # note: x is a physical register
         # if verbose:
         #     print("queue is empty")
-        # check_all_pr_mapped() # todo: comment this out after debug!!
+        if checking:
+            check_all_pr_mapped()
         x = find_spill_then_spill(other_pr)
 
     # print("vr %d" % vr)
@@ -688,6 +694,11 @@ def find_spill_then_spill(other_pr):
     pr = -1
     # find the farthest clean pr for spilled memory
     clean_pr = get_clean_spill(other_pr)
+    remat_pr = get_remat_spill(other_pr)
+
+    if remat_pr != -1:
+        unmap_pr(remat_pr)
+        return remat_pr
 
     # find the farthest general pr thru a linear scan
     for i in range(len(PrNu)):
@@ -714,7 +725,7 @@ def find_spill_then_spill(other_pr):
         spill(pr)
         return pr
 
-    unmap_pr(clean_pr)  # don't spill this one!
+    spill(clean_pr)
     return clean_pr
 
 
@@ -729,6 +740,26 @@ def get_spill_addr(vr):
     """
     return 32768 + 4 * vr
 
+def get_remat_spill(other_pr):
+    """
+    Will return the PR corresponding to the farthest used rematerializable 
+    VR. 
+    :param other_pr: the pr that we want to preserve.
+    Or will return -1 if no such pr exists. 
+    :return: integer
+    """
+    global PrNu, line_num
+    curr_max = line_num
+    pr = -1
+    # find the farthest clean pr, for spilled
+
+    # find the farthest general pr thru a linear scan
+    for i in range(len(PrNu)):
+        if PrNu[i] > curr_max and check_rematerializable(i) \
+                and other_pr != i:
+            curr_max = PrNu[i]
+            pr = i
+    return pr
 
 def get_clean_spill(other_pr):
     """
@@ -840,7 +871,6 @@ def get_used(opcode):
 def insert_loadi_list(list_node):
     """"""
     global LoadI_Head, LoadI_Tail
-    print(list_node.ir_data) # todo: remove for debugging!!
     if not LoadI_Head:
         LoadI_Head = list_node
         LoadI_Tail = list_node
@@ -878,10 +908,6 @@ def spill(x):
     print("store r%d => r%d // spill vr %d" % (x, k, PrToVr[x]))
     unmap_pr(x)
 
-
-# TODO: where are we going to want to add new operations, such as the
-# immediate load operation detailed on page 689?
-# would it be in spill?
 
 
 def unmap_pr(x):
@@ -952,7 +978,7 @@ def reg_alloc(ListHead, defer_loadI):
     """
     # note: structure of registers in IR is <SR, VR, PR, NU>
     global MAX_VR, MAXLIVE, k, pr_stack, VrToPr, \
-        PrToVr, PrNu, Remat_Map, line_num, rematerializable_bits, Vr_Mem_Map
+        PrToVr, PrNu, Remat_Map, line_num, rematerializable_bits, Vr_Mem_Map, checking
 
     set_for_alloc()
 
@@ -960,7 +986,8 @@ def reg_alloc(ListHead, defer_loadI):
     curr = ListHead
     while curr != None:
         line_num += 1
-        # check_prnu(line_num)  # TODO: comment this call!!
+        if checking:
+            check_prnu(line_num)  # TODO: comment this call!!
 
         if verbose:
             print("on line: %d " % line_num)
@@ -992,7 +1019,8 @@ def reg_alloc(ListHead, defer_loadI):
                 # I'm just going for it
                 if verbose:
                     print("marking as rematerializable")
-                # check_pr_vr() # todo: uncomment for debugging
+                if checking:
+                    check_pr_vr()
                 curr = curr.next  # we choose not to print it now
                 continue
 
@@ -1045,8 +1073,9 @@ def reg_alloc(ListHead, defer_loadI):
 
         print_operation(curr, 2)
         print("")
-        # check_pr_vr()  # todo: comment out these calls when done debugging
-        # check_no_repeat_vr(curr)
+        if checking:
+            check_pr_vr()
+            check_no_repeat_vr(curr)
         curr = curr.next
 
 
