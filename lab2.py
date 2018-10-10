@@ -262,7 +262,7 @@ def main():
         checking = True
         numArgs -= 1
 
-    if len(sys.argv) < 3:
+    if numArgs < 3:
         print("Note: 412alloc takes 3 arguments:"
               "412alloc <flag> <filename>")
 
@@ -275,10 +275,8 @@ def main():
         return
         # print out help statement
 
-    if verbose:
-        f = open(sys.argv[numArgs], 'r')
-    else:
-        f = open(sys.argv[numArgs - 1], 'r')
+    f = open(sys.argv[-1], 'r')
+
     init_double_buf()
     parse()
 
@@ -694,11 +692,11 @@ def find_spill_then_spill(other_pr):
     pr = -1
     # find the farthest clean pr for spilled memory
     clean_pr = get_clean_spill(other_pr)
-    remat_pr = get_remat_spill(other_pr)
 
-    if remat_pr != -1:
-        unmap_pr(remat_pr)
-        return remat_pr
+    # if remat_pr != -1:
+    # Todo: this is only if we always want to pick the remat VR
+    #     unmap_pr(remat_pr)
+    #     return remat_pr
 
     # find the farthest general pr thru a linear scan
     for i in range(len(PrNu)):
@@ -775,11 +773,15 @@ def get_clean_spill(other_pr):
     # find the farthest clean pr, for spilled
 
     # find the farthest general pr thru a linear scan
+    remat_pr = get_remat_spill(other_pr)
+    if remat_pr != -1:
+        return remat_pr
     for i in range(len(PrNu)):
         if PrNu[i] > curr_max and check_spill_addr(i) \
                 and other_pr != i:
             curr_max = PrNu[i]
             pr = i
+
     return pr
 
 
